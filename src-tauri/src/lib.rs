@@ -147,7 +147,7 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
             }
         });
         
-        if let Err(e) = adapter.install_claude_code(&path, log_tx, cancel_flag) {
+        if let Err(e) = adapter.install_claude_code(&path, log_tx, cancel_flag.clone()) {
             let _ = app.emit("install-status", format!("安装失败: {}", e));
             let _ = app.emit("install-progress", 100);
             let _ = app.emit("install-finished", false);
@@ -168,18 +168,45 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
             {
                 let is_anthropic = target_base_url.is_empty() || target_base_url.contains("api.anthropic.com");
                 let is_ccswitch = target_base_url.contains(":9090");
-                let is_local_engine = target_base_url.contains(":11434") || target_base_url.contains(":8080") || target_base_url.contains(":1234");
+                let needs_cc_switch = !is_anthropic && !is_ccswitch;
 
-                if !is_anthropic && !is_ccswitch && !is_local_engine {
-                    let user_profile = std::env::var("USERPROFILE")
-                        .unwrap_or_else(|_| r"C:\Users\Administrator".to_string());
-                    let db_path = std::path::PathBuf::from(&user_profile)
-                        .join(".cc-switch")
-                        .join("cc-switch.db");
-                    if db_path.exists() {
+                if needs_cc_switch {
+                    let has_cc = utils::is_ccswitch_installed_anywhere();
+                    let mut install_success = has_cc;
+
+                    if !has_cc {
+                        let _ = app.emit("install-status", "⚠️ 检测到配置了本地模型或第三方代理，正在自动部署 CC-Switch 协议转换网关...");
+                        let version = utils::fetch_latest_ccswitch_version("").unwrap_or_else(|_| "1.0.6".to_string());
+                        let temp_dir = std::env::temp_dir();
+                        let msi_path = temp_dir.join("CC-Switch-Installer.msi");
+
+                        let _ = app.emit("install-status", format!("⏳ 正在下载 CC-Switch v{} 中转网关...", version));
+                        let (p_tx, _p_rx) = channel::<f32>();
+                        if utils::download_ccswitch(&version, "", &msi_path, p_tx, cancel_flag.clone(), None).is_ok() {
+                            let _ = app.emit("install-status", "🔧 正在静默安装 CC-Switch...");
+                            if utils::run_ccswitch_msi(&msi_path).is_ok() {
+                                install_success = true;
+                                let _ = app.emit("install-status", "✅ CC-Switch 中转网关安装成功！");
+                            }
+                            let _ = std::fs::remove_file(msi_path);
+                        }
+                    }
+
+                    if install_success {
                         sync_cc = true;
                         cc_backend_url = target_base_url.clone();
                         target_base_url = format!("http://localhost:{}", utils::get_ccswitch_proxy_port());
+
+                        // Launch CC-Switch in backend
+                        if let Some(exe_path) = utils::find_ccswitch_path() {
+                            let mut cmd = std::process::Command::new(exe_path);
+                            #[cfg(target_os = "windows")]
+                            {
+                                use std::os::windows::process::CommandExt;
+                                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                            }
+                            let _ = cmd.spawn();
+                        }
                     }
                 }
             }
@@ -193,6 +220,7 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
             #[cfg(target_os = "windows")]
             {
                 if sync_cc {
+                    let _ = app.emit("install-status", "正在向本地网关注入模型绑定配置...");
                     let _ = utils::sync_to_ccswitch(&cc_backend_url, &config.api_key, "");
                 }
             }
