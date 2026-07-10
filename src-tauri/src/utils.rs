@@ -1510,6 +1510,26 @@ pub fn download_ccswitch(
                     }
                 }
 
+                // Sanity Check: Verify if the file is a valid MSI
+                drop(file); // Close file handle first so we can read it
+
+                let mut checker = File::open(dest_path).map_err(|e| format!("校验时无法打开文件: {}", e))?;
+                let mut header = [0u8; 4];
+                let _ = checker.read_exact(&mut header);
+                let file_len = checker.metadata().map(|m| m.len()).unwrap_or(0);
+
+                // OLE Compound Document magic header (MSI files) is: D0 CF 11 E0
+                let is_valid_msi = header == [0xD0, 0xCF, 0x11, 0xE0] && file_len > 1_000_000;
+
+                if !is_valid_msi {
+                    let _ = fs::remove_file(dest_path);
+                    last_err = format!("镜像 {} 下载的文件并非有效的 MSI 文件包 (大小: {} 字节)", mirror_name, file_len);
+                    if let Some(ref tx) = log_sender {
+                        let _ = tx.send(format!("❌ {} — 切换下一个镜像\n", last_err));
+                    }
+                    continue;
+                }
+
                 return Ok(());
             }
         }
@@ -1520,22 +1540,28 @@ pub fn download_ccswitch(
 
 /// Run the downloaded MSI file to install CC-Switch
 pub fn run_ccswitch_msi(msi_path: &Path) -> Result<(), String> {
-    // Run msiexec /i <path> /passive (passive is interactive with progress bar but no clicks required)
-    // Or just run it regularly. Passive is nice!
-    let status = Command::new("msiexec")
-        .args([
-            "/i",
-            msi_path.to_str().ok_or("非法的 MSI 文件路径")?,
-            "/passive",
-        ])
-        .status()
-        .map_err(|e| format!("运行 msiexec 进程失败: {}", e))?;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    if status.success() || status.code() == Some(0) || status.code() == Some(3010) {
-        // 3010 means success, but restart required
+        let msi_path_str = msi_path.to_string_lossy().to_string();
+        let status = Command::new("msiexec")
+            .args(&["/i", &msi_path_str, "/passive", "/norestart"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+            .map_err(|e| format!("运行 msiexec 进程失败: {}", e))?;
+
+        if status.success() || status.code() == Some(0) || status.code() == Some(3010) {
+            Ok(())
+        } else {
+            Err(format!("msiexec 返回错误代码: {:?}", status.code()))
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = msi_path;
         Ok(())
-    } else {
-        Err(format!("msiexec 返回错误代码: {:?}", status.code()))
     }
 }
 
