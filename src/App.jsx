@@ -89,16 +89,22 @@ export default function App() {
   };
 
   // 检测环境
-  const checkEnv = async () => {
+  const checkEnv = async (isSilent = false) => {
     if (isCheckingEnv) return;
     setIsCheckingEnv(true);
-    showToast('正在扫描系统依赖环境...');
+    if (!isSilent) {
+      showToast('正在扫描系统依赖环境...');
+    }
     try {
       const data = await invoke('check_system_env');
       setEnvData(data);
-      showToast('系统环境检测完成！');
+      if (!isSilent) {
+        showToast('系统环境检测完成！');
+      }
     } catch (e) {
-      showToast(`环境检测失败: ${e}`);
+      if (!isSilent) {
+        showToast(`环境检测失败: ${e}`);
+      }
     } finally {
       setIsCheckingEnv(false);
     }
@@ -139,7 +145,7 @@ export default function App() {
 
     if (shouldPoll) {
       timer = setInterval(() => {
-        checkEnv();
+        checkEnv(true);
       }, 3000);
     }
 
