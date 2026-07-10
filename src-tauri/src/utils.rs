@@ -2547,6 +2547,27 @@ pub fn select_folder() -> Option<String> {
     }
 }
 
+/// Dynamically query Windows Registry for the latest User and Machine PATH variables,
+/// and refresh the current process's PATH environment variable.
+pub fn refresh_process_path() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        // Query combined Path from both Machine and User environments
+        let script = "[System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')";
+        let mut c = Command::new("powershell");
+        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]);
+        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        if let Ok(output) = c.output() {
+            let combined_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !combined_path.is_empty() {
+                // Update the current process's PATH
+                std::env::set_var("PATH", combined_path);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

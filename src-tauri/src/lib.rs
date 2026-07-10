@@ -53,6 +53,9 @@ pub struct InstallConfig {
 
 #[tauri::command]
 fn check_system_env() -> SystemEnv {
+    #[cfg(target_os = "windows")]
+    utils::refresh_process_path();
+
     let adapter = get_platform_adapter();
     SystemEnv {
         node_version: adapter.detect_node(),

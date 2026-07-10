@@ -131,6 +131,23 @@ export default function App() {
     loadConfig();
   }, []);
 
+  // 智能定时环境检测轮询 (当没有 Node.js 环境或处于安装状态时开启)
+  useEffect(() => {
+    let timer = null;
+    const hasNode = envData && envData.node_version && envData.npm_version;
+    const shouldPoll = !hasNode || isInstalling;
+
+    if (shouldPoll) {
+      timer = setInterval(() => {
+        checkEnv();
+      }, 3000);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [envData, isInstalling]);
+
   // 监听 Tauri 后端一键安装的事件广播
   useEffect(() => {
     let unlistenLog, unlistenProgress, unlistenStatus, unlistenFinished;
