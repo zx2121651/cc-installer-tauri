@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  background-color: #FFFBF9;
+}
+
+/* 美化全局所有滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #EEDCD0;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #F37042;
+}
+
+/* 局部滚动容器 */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #EEDCD0 transparent;
+}
