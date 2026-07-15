@@ -70,6 +70,15 @@ fn check_system_env() -> SystemEnv {
 fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
     thread::spawn(move || {
         let (log_tx, log_rx) = channel::<String>();
+
+        // Forward installation logs to React client
+        let app_log = app.clone();
+        thread::spawn(move || {
+            while let Ok(line) = log_rx.recv() {
+                let _ = app_log.emit("install-log", line);
+            }
+        });
+
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let path = config.install_path.clone();
 
@@ -142,15 +151,7 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
         let _ = app.emit("install-status", "步骤 3/5: 正在全局安装 Claude CLI 并配置依赖...");
         let _ = app.emit("install-progress", 70);
         
-        // Forward installation logs to React client
-        let app_log = app.clone();
-        thread::spawn(move || {
-            while let Ok(line) = log_rx.recv() {
-                let _ = app_log.emit("install-log", line);
-            }
-        });
-        
-        if let Err(e) = adapter.install_claude_code(&path, log_tx, cancel_flag.clone()) {
+        if let Err(e) = adapter.install_claude_code(&path, log_tx.clone(), cancel_flag.clone()) {
             let _ = app.emit("install-status", format!("安装失败: {}", e));
             let _ = app.emit("install-progress", 100);
             let _ = app.emit("install-finished", false);
@@ -185,7 +186,7 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
 
                         let _ = app.emit("install-status", format!("⏳ 正在下载 CC-Switch v{} 中转网关...", version));
                         let (p_tx, _p_rx) = channel::<f32>();
-                        if utils::download_ccswitch(&version, "", &msi_path, p_tx, cancel_flag.clone(), None).is_ok() {
+                        if utils::download_ccswitch(&version, "", &msi_path, p_tx, cancel_flag.clone(), Some(log_tx.clone())).is_ok() {
                             let _ = app.emit("install-status", "🔧 正在静默安装 CC-Switch...");
                             if utils::run_ccswitch_msi(&msi_path).is_ok() {
                                 install_success = true;

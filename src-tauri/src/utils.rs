@@ -1426,7 +1426,7 @@ pub fn download_ccswitch(
     }
 
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
 
@@ -1618,9 +1618,22 @@ pub fn download_nodejs(
             .map_err(|e| format!("写入本地磁盘失败: {}", e))?;
 
         downloaded += n as u64;
-        if total_size > 0 {
-            let _ = progress_sender.send(downloaded as f32 / total_size as f32);
-        }
+    }
+
+    // Sanity Check: Verify if the file is a valid MSI
+    drop(file); // Close file handle first so we can read it
+
+    let mut checker = File::open(dest_path).map_err(|e| format!("校验时无法打开文件: {}", e))?;
+    let mut header = [0u8; 4];
+    let _ = checker.read_exact(&mut header);
+    let file_len = checker.metadata().map(|m| m.len()).unwrap_or(0);
+
+    // OLE Compound Document magic header (MSI files) is: D0 CF 11 E0
+    let is_valid_msi = header == [0xD0, 0xCF, 0x11, 0xE0] && file_len > 10_000_000;
+
+    if !is_valid_msi {
+        let _ = fs::remove_file(dest_path);
+        return Err(format!("下载的 Node.js 安装包并非有效的 MSI 文件 (大小: {} 字节)", file_len));
     }
 
     Ok(())
