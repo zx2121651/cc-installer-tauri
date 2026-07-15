@@ -1649,7 +1649,7 @@ pub fn run_nodejs_installer(msi_path: &Path, custom_dir: Option<&str>) -> Result
         let mut args = vec!["/i".to_string(), msi_path.to_string_lossy().to_string()];
         if let Some(dir) = custom_dir {
             if !dir.is_empty() {
-                args.push(format!("INSTALLDIR=\"{}\"", dir));
+                args.push(format!("INSTALLDIR={}", dir));
             }
         }
         args.push("/passive".to_string());
