@@ -172,7 +172,12 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
             {
                 let is_anthropic = target_base_url.is_empty() || target_base_url.contains("api.anthropic.com");
                 let is_ccswitch = target_base_url.contains(":9090");
-                let needs_cc_switch = !is_anthropic && !is_ccswitch;
+                // Modern Ollama (0.14+), llama.cpp and LM Studio natively support Anthropic API format.
+                // No CC-Switch protocol translation needed for these local inference servers.
+                let is_local_native = target_base_url.contains(":11434")
+                    || target_base_url.contains(":8080")
+                    || target_base_url.contains(":1234");
+                let needs_cc_switch = !is_anthropic && !is_ccswitch && !is_local_native;
 
                 if needs_cc_switch {
                     let has_cc = utils::is_ccswitch_installed_anywhere();
