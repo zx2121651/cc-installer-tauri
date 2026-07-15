@@ -1647,11 +1647,10 @@ pub fn run_nodejs_installer(msi_path: &Path, custom_dir: Option<&str>) -> Result
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
         let mut args = vec!["/i".to_string(), msi_path.to_string_lossy().to_string()];
-        if let Some(dir) = custom_dir {
-            if !dir.is_empty() {
-                args.push(format!("INSTALLDIR={}", dir));
-            }
-        }
+        // NOTE: Do NOT pass INSTALLDIR here. Rust's Command API will wrap
+        // paths with spaces in outer double-quotes which msiexec does not
+        // accept for property=value arguments, causing error 1639.
+        // Node.js MSI installs to C:\Program Files\nodejs by default.
         args.push("/passive".to_string());
         args.push("/norestart".to_string());
 

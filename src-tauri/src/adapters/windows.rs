@@ -52,11 +52,11 @@ impl PlatformAdapter for WindowsAdapter {
             "C:\\Program Files\\nodejs".to_string()
         };
 
-        let _ = log_tx.send(format!("🔧 正在执行 Node.js 静默安装至 {}...\n", node_install_dir));
-        utils::run_nodejs_installer(&msi_path, Some(&node_install_dir))?;
+        let _ = log_tx.send("🔧 正在执行 Node.js 静默安装 (默认路径 C:\\Program Files\\nodejs)...\n".to_string());
+        utils::run_nodejs_installer(&msi_path, None)?;
 
-        let _ = std::fs::remove_file(msi_path);
-        Ok(node_install_dir)
+        let _ = std::fs::remove_file(&msi_path);
+        Ok("C:\\Program Files\\nodejs".to_string())
     }
 
     fn set_npm_registry(&self, registry_url: &str) -> Result<(), String> {
