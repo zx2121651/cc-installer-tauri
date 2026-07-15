@@ -224,8 +224,8 @@ export default function App() {
           add_to_path: cbPath,
           set_alias: cbAlias,
           create_desktop_shortcut: cbShortcut,
-          custom_api_url: activeConfig.base_url,
-          api_key: activeConfig.api_key
+          custom_api_url: activeConfig?.base_url ?? '',
+          api_key: activeConfig?.api_key ?? ''
         }
       });
     } catch (e) {

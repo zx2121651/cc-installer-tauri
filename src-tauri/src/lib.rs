@@ -40,15 +40,15 @@ pub struct SystemEnv {
     powershell_policy: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
 pub struct InstallConfig {
-    install_path: String,
-    auto_config_env: bool,
-    add_to_path: bool,
-    set_alias: bool,
-    create_desktop_shortcut: bool,
-    custom_api_url: String,
-    api_key: String,
+    #[serde(default)] install_path: String,
+    #[serde(default)] auto_config_env: bool,
+    #[serde(default)] add_to_path: bool,
+    #[serde(default)] set_alias: bool,
+    #[serde(default)] create_desktop_shortcut: bool,
+    #[serde(default)] custom_api_url: String,
+    #[serde(default)] api_key: String,
 }
 
 #[tauri::command]
