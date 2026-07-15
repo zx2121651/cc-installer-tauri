@@ -260,7 +260,7 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
     }
 
     if (handleInstall) {
-      handleInstall();
+      handleInstall(updated);
     }
     
     if (setActiveTab) {

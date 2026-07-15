@@ -202,7 +202,7 @@ export default function App() {
     };
   }, []);
 
-  const handleInstall = async () => {
+  const handleInstall = async (configOverride = null) => {
     if (isInstalling) return;
     setIsInstalling(true);
     setLogsList([]);
@@ -212,6 +212,10 @@ export default function App() {
 
     showToast('🚀 正在拉起全自动配置通道...');
 
+    // Use configOverride if provided (e.g. from ApiConfigTab) to avoid
+    // React stale-closure bug where configData hasn't updated yet.
+    const activeConfig = configOverride || configData;
+
     try {
       await invoke('start_installation', {
         config: {
@@ -220,8 +224,8 @@ export default function App() {
           add_to_path: cbPath,
           set_alias: cbAlias,
           create_desktop_shortcut: cbShortcut,
-          custom_api_url: configData.base_url,
-          api_key: configData.api_key
+          custom_api_url: activeConfig.base_url,
+          api_key: activeConfig.api_key
         }
       });
     } catch (e) {
