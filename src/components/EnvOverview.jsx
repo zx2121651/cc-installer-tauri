@@ -3,7 +3,7 @@ import { ListTree, ChevronRight, Globe, Cpu, Archive, Terminal, Command, Sliders
 
 export default function EnvOverview({ envData, checkEnv, isCheckingEnv }) {
   return (
-    <div className="flex-1 bg-white border border-[#FDECE2] rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+    <div className="flex-1 bg-white border border-[#FDECE2] rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] card-hover-effect">
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-black text-sm text-[#4A3A31] flex items-center gap-2">
           <div className="p-1 bg-orange-100 rounded-lg text-[#F37042]"><ListTree className="w-3.5 h-3.5" /></div>

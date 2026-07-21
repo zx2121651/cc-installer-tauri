@@ -12,7 +12,7 @@ export default function UtilityTools({ triggerTool }) {
   ];
 
   return (
-    <div className="flex-1 bg-white border border-[#FDECE2] rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+    <div className="flex-1 bg-white border border-[#FDECE2] rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] card-hover-effect">
       <div className="flex items-center gap-2 mb-4">
         <div className="p-1 bg-purple-50 rounded-lg text-purple-500"><Settings className="w-3.5 h-3.5" /></div>
         <h3 className="font-black text-sm text-[#4A3A31]">实用工具</h3>
@@ -25,9 +25,9 @@ export default function UtilityTools({ triggerTool }) {
             <button 
               key={i} 
               onClick={() => triggerTool(tool.id, tool.title)}
-              className="flex items-center gap-3 p-2 rounded-xl hover:bg-[#FAF0E8] transition-colors text-left group"
+              className="flex items-center gap-3 p-2 rounded-xl hover:bg-[#FAF0E8] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] text-left group cursor-pointer"
             >
-              <div className={`p-1.5 rounded-lg ${tool.bg} ${tool.color} group-hover:scale-110 transition-transform`}>
+              <div className={`p-1.5 rounded-lg ${tool.bg} ${tool.color} group-hover:scale-110 transition-transform duration-300`}>
                 <ToolIcon className="w-4 h-4 fill-current opacity-20" />
               </div>
               <div>

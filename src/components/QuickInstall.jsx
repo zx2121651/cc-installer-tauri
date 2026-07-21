@@ -16,7 +16,7 @@ export default function QuickInstall({
   isInstalling
 }) {
   return (
-    <div className="flex-[1.2] bg-white border border-[#FDECE2] rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex flex-col">
+    <div className="flex-[1.2] bg-white border border-[#FDECE2] rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex flex-col card-hover-effect">
       <div className="flex items-center gap-2 mb-4">
         <div className="p-1 bg-blue-50 rounded-lg text-blue-500"><Download className="w-3.5 h-3.5" /></div>
         <h3 className="font-black text-sm text-[#4A3A31]">快速安装</h3>

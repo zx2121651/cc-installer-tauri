@@ -33,3 +33,152 @@ html, body, #root {
   scrollbar-width: thin;
   scrollbar-color: #EEDCD0 transparent;
 }
+
+/* ==========================================
+   ✨ 动画与微交互系统 Keyframes & Utilities
+   ========================================== */
+
+/* 1. 视图平滑淡入上升 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 2. 进行中步骤节点呼吸环绕光晕 */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0 0px rgba(243, 112, 66, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(243, 112, 66, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0px rgba(243, 112, 66, 0);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 1.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 3. 进度条渐变流动光影 */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #F37042 25%, #FFA07A 50%, #F37042 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* 4. 吉祥物小猫呼吸起伏 */
+@keyframes catBreathe {
+  0%, 100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.97) translateY(1px);
+  }
+}
+
+.animate-cat-breathe {
+  transform-origin: bottom center;
+  animation: catBreathe 4s infinite ease-in-out;
+}
+
+/* 5. 小猫耳朵微颤 */
+@keyframes earTwitchLeft {
+  0%, 94%, 100% {
+    transform: rotate(0deg);
+  }
+  96% {
+    transform: rotate(-4deg);
+  }
+  98% {
+    transform: rotate(2deg);
+  }
+}
+
+@keyframes earTwitchRight {
+  0%, 93%, 100% {
+    transform: rotate(0deg);
+  }
+  95% {
+    transform: rotate(4deg);
+  }
+  97% {
+    transform: rotate(-2deg);
+  }
+}
+
+.animate-ear-left {
+  transform-origin: bottom right;
+  animation: earTwitchLeft 6s infinite ease-in-out;
+}
+
+.animate-ear-right {
+  transform-origin: bottom left;
+  animation: earTwitchRight 7s infinite ease-in-out;
+}
+
+/* 6. 侧边栏绿植微风摇摆 */
+@keyframes plantSway {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(1.5deg);
+  }
+}
+
+.animate-plant-sway {
+  transform-origin: bottom center;
+  animation: plantSway 5s infinite ease-in-out;
+}
+
+/* 7. Toast 提示下滑物理弹簧与渐入 */
+@keyframes toastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -24px) scale(0.95);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, 4px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: toastSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* 卡片微悬浮交互基类 */
+.card-hover-effect {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.card-hover-effect:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(243, 112, 66, 0.05);
+  border-color: #FCD9C6;
+}

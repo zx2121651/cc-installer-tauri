@@ -283,8 +283,8 @@ export default function App() {
       
       {/* 消息提示 */}
       {toastMsg && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-[#F37042] text-white px-6 py-3 rounded-2xl shadow-xl font-bold text-sm flex items-center gap-2 animate-[bounce_0.5s_ease-out]">
-          <Rocket className="w-4 h-4" /> {toastMsg}
+        <div className="fixed top-8 left-1/2 z-50 bg-[#F37042] text-white px-6 py-3 rounded-2xl shadow-xl font-bold text-sm flex items-center gap-2 animate-toast-in">
+          <Rocket className="w-4 h-4 animate-bounce" /> {toastMsg}
         </div>
       )}
 
@@ -300,114 +300,115 @@ export default function App() {
           <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
 
           {/* 右侧主内容区 */}
-          <div className="flex-1 bg-[#FFFBF9] p-6 overflow-y-auto custom-scrollbar flex flex-col gap-5 relative">
-            
-            {activeTab === 'home' && (
-              <>
-                <WelcomeBanner />
+          <div className="flex-1 bg-[#FFFBF9] p-6 overflow-y-auto custom-scrollbar relative">
+            <div key={activeTab} className="animate-fade-in-up flex flex-col gap-5 min-h-full">
+              {activeTab === 'home' && (
+                <>
+                  <WelcomeBanner />
 
-                {/* 首页自适应响应式网格区 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-                  <EnvOverview envData={envData} checkEnv={checkEnv} isCheckingEnv={isCheckingEnv} />
-                  <QuickInstall 
-                    installPath={installPath} 
-                    setInstallPath={setInstallPath}
-                    cbEnv={cbEnv} 
-                    setCbEnv={setCbEnv}
-                    cbPath={cbPath} 
-                    setCbPath={setCbPath}
-                    cbAlias={cbAlias} 
-                    setCbAlias={setCbAlias}
-                    cbShortcut={cbShortcut} 
-                    setCbShortcut={setCbShortcut}
-                    handleInstall={handleInstall}
-                    isInstalling={isInstalling}
-                  />
-                  <UtilityTools triggerTool={triggerTool} />
-                </div>
+                  {/* 首页自适应响应式网格区 */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+                    <EnvOverview envData={envData} checkEnv={checkEnv} isCheckingEnv={isCheckingEnv} />
+                    <QuickInstall 
+                      installPath={installPath} 
+                      setInstallPath={setInstallPath}
+                      cbEnv={cbEnv} 
+                      setCbEnv={setCbEnv}
+                      cbPath={cbPath} 
+                      setCbPath={setCbPath}
+                      cbAlias={cbAlias} 
+                      setCbAlias={setCbAlias}
+                      cbShortcut={cbShortcut} 
+                      setCbShortcut={setCbShortcut}
+                      handleInstall={handleInstall}
+                      isInstalling={isInstalling}
+                    />
+                    <UtilityTools triggerTool={triggerTool} />
+                  </div>
 
-                {/* 首页底部双列网格 */}
-                <div className="flex flex-col lg:flex-row gap-5 pb-4">
-                  <InstallProgress 
-                    installStep={installStep} 
-                    installProgress={installProgress} 
-                    installStatus={installStatus} 
-                    isInstalling={isInstalling} 
-                  />
-                  <LatestNews />
-                </div>
-              </>
-            )}
+                  {/* 首页底部双列网格 */}
+                  <div className="flex flex-col lg:flex-row gap-5 pb-4">
+                    <InstallProgress 
+                      installStep={installStep} 
+                      installProgress={installProgress} 
+                      installStatus={installStatus} 
+                      isInstalling={isInstalling} 
+                    />
+                    <LatestNews />
+                  </div>
+                </>
+              )}
 
-            {/* 环境检测详细页 */}
-            {activeTab === 'env' && (
-              <EnvTab envData={envData} checkEnv={checkEnv} isCheckingEnv={isCheckingEnv} triggerTool={triggerTool} />
-            )}
+              {/* 环境检测详细页 */}
+              {activeTab === 'env' && (
+                <EnvTab envData={envData} checkEnv={checkEnv} isCheckingEnv={isCheckingEnv} triggerTool={triggerTool} />
+              )}
 
-            {/* 安装配置详细页 */}
-            {activeTab === 'install_config' && (
-              <InstallConfigTab 
-                installPath={installPath} 
-                setInstallPath={setInstallPath}
-                cbEnv={cbEnv} 
-                setCbEnv={setCbEnv}
-                cbPath={cbPath} 
-                setCbPath={setCbPath}
-                cbAlias={cbAlias} 
-                setCbAlias={setCbAlias}
-                cbShortcut={cbShortcut} 
-                setCbShortcut={setCbShortcut}
-                handleInstall={handleInstall}
-                isInstalling={isInstalling}
-                triggerTool={triggerTool}
-              />
-            )}
+              {/* 安装配置详细页 */}
+              {activeTab === 'install_config' && (
+                <InstallConfigTab 
+                  installPath={installPath} 
+                  setInstallPath={setInstallPath}
+                  cbEnv={cbEnv} 
+                  setCbEnv={setCbEnv}
+                  cbPath={cbPath} 
+                  setCbPath={setCbPath}
+                  cbAlias={cbAlias} 
+                  setCbAlias={setCbAlias}
+                  cbShortcut={cbShortcut} 
+                  setCbShortcut={setCbShortcut}
+                  handleInstall={handleInstall}
+                  isInstalling={isInstalling}
+                  triggerTool={triggerTool}
+                />
+              )}
 
-            {/* API 与模型配置页 */}
-            {activeTab === 'api' && (
-              <ApiConfigTab 
-                configData={configData} 
-                saveConfig={saveConfig} 
-                handleInstall={handleInstall}
-                isInstalling={isInstalling}
-                setActiveTab={setActiveTab}
-              />
-            )}
+              {/* API 与模型配置页 */}
+              {activeTab === 'api' && (
+                <ApiConfigTab 
+                  configData={configData} 
+                  saveConfig={saveConfig} 
+                  handleInstall={handleInstall}
+                  isInstalling={isInstalling}
+                  setActiveTab={setActiveTab}
+                />
+              )}
 
-            {/* 终端与网络代理配置页 */}
-            {activeTab === 'terminal' && (
-              <TerminalConfigTab configData={configData} saveConfig={saveConfig} />
-            )}
+              {/* 终端与网络代理配置页 */}
+              {activeTab === 'terminal' && (
+                <TerminalConfigTab configData={configData} saveConfig={saveConfig} />
+              )}
 
-            {/* 快捷别名配置页 */}
-            {activeTab === 'shortcuts' && (
-              <ShortcutsTab triggerTool={triggerTool} />
-            )}
+              {/* 快捷别名配置页 */}
+              {activeTab === 'shortcuts' && (
+                <ShortcutsTab triggerTool={triggerTool} />
+              )}
 
-            {/* 项目模板市场页 */}
-            {activeTab === 'templates' && (
-              <TemplatesTab showToast={showToast} />
-            )}
+              {/* 项目模板市场页 */}
+              {activeTab === 'templates' && (
+                <TemplatesTab showToast={showToast} />
+              )}
 
-            {/* 备份与重置页 */}
-            {activeTab === 'backup' && (
-              <BackupTab configData={configData} saveConfig={saveConfig} showToast={showToast} handleStartUninstall={handleStartUninstall} />
-            )}
+              {/* 备份与重置页 */}
+              {activeTab === 'backup' && (
+                <BackupTab configData={configData} saveConfig={saveConfig} showToast={showToast} handleStartUninstall={handleStartUninstall} />
+              )}
 
-            {/* 高级性能调优页 */}
-            {activeTab === 'advanced' && (
-              <AdvancedSettingsTab configData={configData} saveConfig={saveConfig} />
-            )}
+              {/* 高级性能调优页 */}
+              {activeTab === 'advanced' && (
+                <AdvancedSettingsTab configData={configData} saveConfig={saveConfig} />
+              )}
 
-            {/* 日志详情排错页 */}
-            {activeTab === 'logs' && (
-              <LogsTerminal logsList={logsList} />
-            )}
+              {/* 日志详情排错页 */}
+              {activeTab === 'logs' && (
+                <LogsTerminal logsList={logsList} />
+              )}
 
-            {/* 帮助 FAQ 页 */}
-            {activeTab === 'help' && (
-              <HelpTab />
-            )}
+              {/* 帮助 FAQ 页 */}
+              {activeTab === 'help' && (
+                <HelpTab />
+              )}
+            </div>
           </div>
         </div>
 
