@@ -13,19 +13,24 @@ function safeParseInt(value, fallback) {
 }
 
 export default function AdvancedSettingsTab({ configData, saveConfig }) {
+  const getValidTokenValue = (val, fallback) => {
+    const num = safeParseInt(val, fallback);
+    return num > 0 ? num : fallback;
+  };
+
   const [alwaysThinking, setAlwaysThinking] = useState(configData.always_thinking);
-  const [maxThinkingTokens, setMaxThinkingTokens] = useState(configData.max_thinking_tokens ?? DEFAULTS.max_thinking_tokens);
-  const [maxOutputTokens, setMaxOutputTokens] = useState(configData.max_output_tokens ?? DEFAULTS.max_output_tokens);
-  const [maxContextLength, setMaxContextLength] = useState(configData.max_context_length ?? DEFAULTS.max_context_length);
+  const [maxThinkingTokens, setMaxThinkingTokens] = useState(getValidTokenValue(configData.max_thinking_tokens, DEFAULTS.max_thinking_tokens));
+  const [maxOutputTokens, setMaxOutputTokens] = useState(getValidTokenValue(configData.max_output_tokens, DEFAULTS.max_output_tokens));
+  const [maxContextLength, setMaxContextLength] = useState(getValidTokenValue(configData.max_context_length, DEFAULTS.max_context_length));
   const [enableAutoUpdater, setEnableAutoUpdater] = useState(configData.enable_auto_updater);
   const [autoAcceptEdits, setAutoAcceptEdits] = useState(configData.auto_accept_edits);
   const [disableAutoCompact, setDisableAutoCompact] = useState(!!configData.disable_auto_compact);
 
   useEffect(() => {
     setAlwaysThinking(configData.always_thinking);
-    setMaxThinkingTokens(configData.max_thinking_tokens ?? DEFAULTS.max_thinking_tokens);
-    setMaxOutputTokens(configData.max_output_tokens ?? DEFAULTS.max_output_tokens);
-    setMaxContextLength(configData.max_context_length ?? DEFAULTS.max_context_length);
+    setMaxThinkingTokens(getValidTokenValue(configData.max_thinking_tokens, DEFAULTS.max_thinking_tokens));
+    setMaxOutputTokens(getValidTokenValue(configData.max_output_tokens, DEFAULTS.max_output_tokens));
+    setMaxContextLength(getValidTokenValue(configData.max_context_length, DEFAULTS.max_context_length));
     setEnableAutoUpdater(configData.enable_auto_updater);
     setAutoAcceptEdits(configData.auto_accept_edits);
     setDisableAutoCompact(!!configData.disable_auto_compact);

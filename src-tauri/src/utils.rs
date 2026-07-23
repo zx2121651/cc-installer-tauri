@@ -1463,7 +1463,7 @@ pub fn get_current_always_thinking() -> bool {
     false
 }
 
-/// Get current MAX_THINKING_TOKENS configuration (returns 0 if not set)
+/// Get current MAX_THINKING_TOKENS configuration (defaults to 1024 if not set)
 pub fn get_current_max_thinking_tokens() -> i32 {
     let settings_dir = get_claude_settings_path().ok();
     let file_path = settings_dir.map(|d| d.join("settings.json"));
@@ -1471,20 +1471,27 @@ pub fn get_current_max_thinking_tokens() -> i32 {
         if path.exists() {
             if let Ok(content) = fs::read_to_string(path) {
                 if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
-                    let raw = config
+                    if let Some(v) = config
                         .get("env")
                         .and_then(|env| env.get("MAX_THINKING_TOKENS"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    return raw.parse::<i32>().unwrap_or(0);
+                    {
+                        if let Some(n) = v.as_i64() {
+                            if n > 0 { return n as i32; }
+                        }
+                        if let Some(s) = v.as_str() {
+                            if let Ok(n) = s.parse::<i32>() {
+                                if n > 0 { return n; }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-    0
+    1024
 }
 
-/// Get current MAX_OUTPUT_TOKENS configuration (returns 0 if not set)
+/// Get current MAX_OUTPUT_TOKENS configuration (defaults to 4096 if not set)
 pub fn get_current_max_output_tokens() -> i32 {
     let settings_dir = get_claude_settings_path().ok();
     let file_path = settings_dir.map(|d| d.join("settings.json"));
@@ -1498,20 +1505,22 @@ pub fn get_current_max_output_tokens() -> i32 {
                         .and_then(|env| env.get("MAX_OUTPUT_TOKENS"))
                     {
                         if let Some(n) = v.as_i64() {
-                            return n as i32;
+                            if n > 0 { return n as i32; }
                         }
                         if let Some(s) = v.as_str() {
-                            return s.parse::<i32>().unwrap_or(0);
+                            if let Ok(n) = s.parse::<i32>() {
+                                if n > 0 { return n; }
+                            }
                         }
                     }
                 }
             }
         }
     }
-    0
+    4096
 }
 
-/// Get current claudeCodeMaxContextLength configuration (returns 0 if not set)
+/// Get current claudeCodeMaxContextLength configuration (defaults to 8192 if not set)
 pub fn get_current_max_context_length() -> i32 {
     let settings_dir = get_claude_settings_path().ok();
     let file_path = settings_dir.map(|d| d.join("settings.json"));
@@ -1521,14 +1530,14 @@ pub fn get_current_max_context_length() -> i32 {
                 if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
                     if let Some(v) = config.get("claudeCodeMaxContextLength") {
                         if let Some(n) = v.as_i64() {
-                            return n as i32;
+                            if n > 0 { return n as i32; }
                         }
                     }
                 }
             }
         }
     }
-    0
+    8192
 }
 
 /// Get current enableAutoUpdater configuration (returns true if not set)
