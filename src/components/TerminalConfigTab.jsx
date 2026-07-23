@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Terminal, Save, ShieldAlert } from 'lucide-react';
 
+const toUiTheme = (theme) => {
+  if (theme === 'auto' || theme === 'system') return 'system';
+  if (theme === 'dark' || theme === 'light') return theme;
+  return 'light';
+};
+
+const toBackendTheme = (theme) => (theme === 'system' ? 'auto' : theme);
+
 export default function TerminalConfigTab({ configData, saveConfig }) {
   const [httpProxy, setHttpProxy] = useState(configData.http_proxy);
   const [noProxy, setNoProxy] = useState(configData.no_proxy);
-  const [theme, setTheme] = useState(configData.theme);
+  const [theme, setTheme] = useState(toUiTheme(configData.theme));
 
   useEffect(() => {
     setHttpProxy(configData.http_proxy);
     setNoProxy(configData.no_proxy);
-    setTheme(configData.theme);
+    setTheme(toUiTheme(configData.theme));
   }, [configData]);
 
   const handleSave = () => {
@@ -17,7 +25,7 @@ export default function TerminalConfigTab({ configData, saveConfig }) {
       ...configData,
       http_proxy: httpProxy,
       no_proxy: noProxy,
-      theme: theme
+      theme: toBackendTheme(theme)
     };
     saveConfig(updated);
   };
@@ -35,9 +43,9 @@ export default function TerminalConfigTab({ configData, saveConfig }) {
         {/* HTTP / HTTPS 代理 */}
         <div>
           <label className="block text-xs font-black text-[#4A3A31] mb-2">HTTP / HTTPS 网络代理 (http_proxy)</label>
-          <input 
-            type="text" 
-            value={httpProxy} 
+          <input
+            type="text"
+            value={httpProxy}
             onChange={e => setHttpProxy(e.target.value)}
             className="w-full bg-[#FFFBF9] border border-[#FDECE2] px-3.5 py-2.5 rounded-xl text-xs font-mono text-[#6D5A4E] focus:outline-none focus:border-orange-300"
             placeholder="http://127.0.0.1:7890"
@@ -50,9 +58,9 @@ export default function TerminalConfigTab({ configData, saveConfig }) {
         {/* 绕过代理范围 */}
         <div>
           <label className="block text-xs font-black text-[#4A3A31] mb-2">绕过代理域名/网段 (no_proxy)</label>
-          <input 
-            type="text" 
-            value={noProxy} 
+          <input
+            type="text"
+            value={noProxy}
             onChange={e => setNoProxy(e.target.value)}
             className="w-full bg-[#FFFBF9] border border-[#FDECE2] px-3.5 py-2.5 rounded-xl text-xs font-mono text-[#6D5A4E] focus:outline-none focus:border-orange-300"
             placeholder="localhost, 127.0.0.1, .local"
@@ -72,11 +80,12 @@ export default function TerminalConfigTab({ configData, saveConfig }) {
               { id: 'system', label: '跟随系统', desc: '根据系统设置自动' }
             ].map(t => (
               <button
+                type="button"
                 key={t.id}
                 onClick={() => setTheme(t.id)}
                 className={`p-3 border rounded-xl text-left flex flex-col justify-between transition-all ${
-                  theme === t.id 
-                    ? 'border-[#F37042] bg-[#FFF5EE] shadow-sm' 
+                  theme === t.id
+                    ? 'border-[#F37042] bg-[#FFF5EE] shadow-sm'
                     : 'border-[#FDECE2] hover:bg-[#FFFBF9]'
                 }`}
               >
@@ -100,6 +109,7 @@ export default function TerminalConfigTab({ configData, saveConfig }) {
 
         {/* 保存按钮 */}
         <button
+          type="button"
           onClick={handleSave}
           className="w-full py-3 bg-[#F37042] hover:bg-[#E06030] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.98] mt-2"
         >

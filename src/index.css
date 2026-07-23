@@ -172,13 +172,149 @@ html, body, #root {
   animation: toastSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+/* 8. ✨ [NEW Phase 2] 3D 浮动上下浮动 */
+@keyframes floatBobbing {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+.animate-float {
+  animation: floatBobbing 4s ease-in-out infinite;
+}
+
+/* 9. ✨ [NEW Phase 2] 按钮 45度动态扫光线 */
+@keyframes buttonShine {
+  0% {
+    left: -100%;
+  }
+  20%, 100% {
+    left: 200%;
+  }
+}
+
+.animate-button-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-button-shine::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -100%;
+  width: 60%;
+  height: 200%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  transform: rotate(25deg);
+  animation: buttonShine 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* 10. ✨ [NEW Phase 2] 彩色渐变文本流动 */
+@keyframes textGradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.gradient-text-animated {
+  background: linear-gradient(135deg, #F37042 0%, #FF8E62 30%, #E05D2F 60%, #F37042 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textGradient 5s ease infinite;
+}
+
+/* 11. ✨ [NEW Phase 2] 背景弥散柔和光斑呼吸 */
+@keyframes blobGlow {
+  0%, 100% {
+    transform: scale(1) translate(0px, 0px);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.15) translate(10px, -10px);
+    opacity: 0.8;
+  }
+}
+
+.animate-blob-glow {
+  animation: blobGlow 8s ease-in-out infinite;
+}
+
+/* 12. ✨ [NEW Phase 2] 点击/复选框弹簧 Pop */
+@keyframes springPop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.25);
+  }
+  75% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-spring-pop {
+  animation: springPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 /* 卡片微悬浮交互基类 */
 .card-hover-effect {
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), border-color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .card-hover-effect:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(243, 112, 66, 0.05);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(243, 112, 66, 0.08);
   border-color: #FCD9C6;
+}
+
+/* 商业版可访问性：减弱动效 */
+@media (prefers-reduced-motion: reduce) {
+  .animate-cat-breathe,
+  .animate-ear-left,
+  .animate-ear-right,
+  .animate-plant-sway,
+  .animate-fade-in-up,
+  .animate-pulse-glow,
+  .animate-shimmer,
+  .animate-toast-in,
+  .animate-float,
+  .animate-button-shine::after,
+  .gradient-text-animated,
+  .animate-blob-glow,
+  .animate-spring-pop {
+    animation: none !important;
+  }
+
+  .card-hover-effect:hover {
+    transform: none;
+  }
+}
+
+/* 键盘焦点可见性 */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #F37042;
+  outline-offset: 2px;
 }

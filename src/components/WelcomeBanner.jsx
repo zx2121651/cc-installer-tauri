@@ -3,36 +3,40 @@ import { Sparkles, CheckCircle2, ShieldCheck, Sliders, Heart } from 'lucide-reac
 
 export default function WelcomeBanner() {
   return (
-    <div className="bg-[#FFF5EE] border border-[#FDECE2] rounded-[20px] p-6 relative overflow-hidden shrink-0 shadow-sm shadow-orange-100/50">
-      <Sparkles className="absolute top-4 right-1/3 text-yellow-400 w-5 h-5 opacity-60" />
-      <Sparkles className="absolute bottom-6 left-1/4 text-orange-300 w-4 h-4 opacity-50" />
-      <Sparkles className="absolute top-8 left-1/2 text-pink-300 w-3 h-3 opacity-60" />
+    <div className="bg-[#FFF5EE] border border-[#FDECE2] rounded-[20px] p-6 relative overflow-hidden shrink-0 shadow-sm shadow-orange-100/50 card-hover-effect">
+      {/* Background Animated Glowing Mesh Blobs */}
+      <div className="absolute -top-10 -right-10 w-48 h-48 bg-orange-200/40 rounded-full blur-2xl animate-blob-glow pointer-events-none" />
+      <div className="absolute -bottom-10 left-1/3 w-40 h-40 bg-pink-200/30 rounded-full blur-2xl animate-blob-glow [animation-delay:3s] pointer-events-none" />
+
+      <Sparkles className="absolute top-4 right-1/3 text-yellow-400 w-5 h-5 opacity-60 animate-pulse" />
+      <Sparkles className="absolute bottom-6 left-1/4 text-orange-300 w-4 h-4 opacity-50 animate-bounce" />
+      <Sparkles className="absolute top-8 left-1/2 text-pink-300 w-3 h-3 opacity-60 animate-ping" />
 
       <div className="relative z-10 w-2/3">
         <h2 className="text-[26px] font-black tracking-tight text-[#4A3A31] mb-2 flex items-center gap-2">
-          欢迎使用 <span className="text-[#F37042]">Claude Code</span> 一键安装程序 🎉
+          欢迎使用 <span className="gradient-text-animated">Claude Code</span> 一键安装程序 🎉
         </h2>
         <p className="text-sm font-bold text-[#8D7A6E] mb-6">
           一站式安装、配置 Claude Code，助你高效编程，灵感不断！
         </p>
         <div className="flex flex-wrap gap-3">
-          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-sm text-xs font-bold text-[#6D5A4E]">
+          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-xs text-xs font-bold text-[#6D5A4E] transition-transform duration-200 hover:scale-105 hover:border-orange-200 cursor-default">
             <div className="w-5 h-5 bg-green-100 text-green-600 rounded flex items-center justify-center"><CheckCircle2 className="w-3.5 h-3.5" /></div> 一键安装
           </div>
-          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-sm text-xs font-bold text-[#6D5A4E]">
+          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-xs text-xs font-bold text-[#6D5A4E] transition-transform duration-200 hover:scale-105 hover:border-yellow-200 cursor-default">
             <div className="w-5 h-5 bg-yellow-100 text-yellow-600 rounded flex items-center justify-center"><ShieldCheck className="w-3.5 h-3.5" /></div> 智能检测
           </div>
-          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-sm text-xs font-bold text-[#6D5A4E]">
+          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-xs text-xs font-bold text-[#6D5A4E] transition-transform duration-200 hover:scale-105 hover:border-purple-200 cursor-default">
             <div className="w-5 h-5 bg-purple-100 text-purple-600 rounded flex items-center justify-center"><Sliders className="w-3.5 h-3.5" /></div> 灵活配置
           </div>
-          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-sm text-xs font-bold text-[#6D5A4E]">
+          <div className="flex items-center gap-1.5 bg-white border border-[#FDECE2] px-3 py-1.5 rounded-lg shadow-xs text-xs font-bold text-[#6D5A4E] transition-transform duration-200 hover:scale-105 hover:border-pink-200 cursor-default">
             <div className="w-5 h-5 bg-pink-100 text-pink-600 rounded flex items-center justify-center"><Heart className="w-3.5 h-3.5" /></div> 开箱即用
           </div>
         </div>
       </div>
 
-      {/* 右侧魔法猫猫插画 SVG */}
-      <div className="absolute right-0 bottom-[-10px] w-[320px] h-[220px] pointer-events-none">
+      {/* 右侧魔法猫猫插画 SVG — 3D Floating animation */}
+      <div className="absolute right-0 bottom-[-10px] w-[320px] h-[220px] pointer-events-none animate-float">
         <svg viewBox="0 0 300 240" className="w-full h-full">
           <path d="M220 50 Q220 20 250 20 Q280 20 280 50 Q280 80 250 80 Q240 80 230 90 L235 75 Q220 70 220 50 Z" fill="#FFFFFF" stroke="#FDECE2" strokeWidth="2" />
           <text x="238" y="45" fontFamily="sans-serif" fontWeight="900" fontSize="12" fill="#4A3A31">Let's</text>

@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { 
-  Home, 
-  ShieldCheck, 
-  Settings, 
-  Cpu, 
-  Terminal, 
-  Command, 
-  LayoutTemplate,
+import {
+  Home,
+  ShieldCheck,
+  Settings,
+  Cpu,
+  Terminal,
   Archive,
   Sliders,
   FileWarning,
@@ -24,7 +22,6 @@ import EnvOverview from './components/EnvOverview';
 import QuickInstall from './components/QuickInstall';
 import UtilityTools from './components/UtilityTools';
 import InstallProgress from './components/InstallProgress';
-import LatestNews from './components/LatestNews';
 import LogsTerminal from './components/LogsTerminal';
 import Footer from './components/Footer';
 
@@ -33,11 +30,11 @@ import EnvTab from './components/EnvTab';
 import InstallConfigTab from './components/InstallConfigTab';
 import ApiConfigTab from './components/ApiConfigTab';
 import TerminalConfigTab from './components/TerminalConfigTab';
-import ShortcutsTab from './components/ShortcutsTab';
-import TemplatesTab from './components/TemplatesTab';
 import BackupTab from './components/BackupTab';
 import AdvancedSettingsTab from './components/AdvancedSettingsTab';
 import HelpTab from './components/HelpTab';
+
+const MAX_LOG_LINES = 800;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
@@ -46,6 +43,7 @@ export default function App() {
   const [isInstalling, setIsInstalling] = useState(false);
   const [installStatus, setInstallStatus] = useState('准备就绪');
   const [logsList, setLogsList] = useState([]);
+  const [opType, setOpType] = useState(null); // 'install' | 'uninstall' | null
 
   // 系统环境检测状态
   const [envData, setEnvData] = useState({
@@ -83,14 +81,28 @@ export default function App() {
 
   // 提示通知
   const [toastMsg, setToastMsg] = useState('');
+  const toastTimerRef = useRef(null);
+  const isCheckingEnvRef = useRef(false);
+  const opTypeRef = useRef(null);
+
   const showToast = (msg) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(''), 3000);
+    toastTimerRef.current = setTimeout(() => setToastMsg(''), 3000);
   };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // 检测环境
   const checkEnv = async (isSilent = false) => {
-    if (isCheckingEnv) return;
+    if (isCheckingEnvRef.current) return;
+    isCheckingEnvRef.current = true;
     setIsCheckingEnv(true);
     if (!isSilent) {
       showToast('正在扫描系统依赖环境...');
@@ -106,6 +118,7 @@ export default function App() {
         showToast(`环境检测失败: ${e}`);
       }
     } finally {
+      isCheckingEnvRef.current = false;
       setIsCheckingEnv(false);
     }
   };
@@ -128,6 +141,7 @@ export default function App() {
       showToast('💾 配置文件保存成功！');
     } catch (e) {
       showToast(`❌ 保存配置失败: ${e}`);
+      throw e;
     }
   };
 
@@ -152,24 +166,39 @@ export default function App() {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [envData, isInstalling]);
+  }, [envData.node_version, envData.npm_version, isInstalling]);
 
-  // 监听 Tauri 后端一键安装的事件广播
+  // 监听 Tauri 后端一键安装/卸载的事件广播（StrictMode 安全）
   useEffect(() => {
-    let unlistenLog, unlistenProgress, unlistenStatus, unlistenFinished;
-    
+    let cancelled = false;
+    const unlisteners = [];
+
     const setupListeners = async () => {
-      unlistenLog = await listen('install-log', (event) => {
-        setLogsList(prev => [...prev, event.payload]);
+      const logUn = await listen('install-log', (event) => {
+        setLogsList((prev) => {
+          const next = [...prev, event.payload];
+          return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
+        });
       });
-      unlistenProgress = await listen('install-progress', (event) => {
+      if (cancelled) {
+        logUn();
+        return;
+      }
+      unlisteners.push(logUn);
+
+      const progressUn = await listen('install-progress', (event) => {
         setInstallProgress(event.payload);
       });
-      unlistenStatus = await listen('install-status', (event) => {
+      if (cancelled) {
+        progressUn();
+        return;
+      }
+      unlisteners.push(progressUn);
+
+      const statusUn = await listen('install-status', (event) => {
         const statusText = event.payload;
         setInstallStatus(statusText);
-        
-        // Automatically extract step (e.g. 3/5) to synchronize the progress steps correctly
+
         const match = statusText.match(/(\d+)\/(\d+)/);
         if (match) {
           const currentStep = parseInt(match[1], 10);
@@ -178,32 +207,59 @@ export default function App() {
           }
         }
       });
-      unlistenFinished = await listen('install-finished', (event) => {
+      if (cancelled) {
+        statusUn();
+        return;
+      }
+      unlisteners.push(statusUn);
+
+      const finishedUn = await listen('install-finished', (event) => {
         setIsInstalling(false);
         const success = event.payload;
+        const currentOp = opTypeRef.current;
+        opTypeRef.current = null;
+        setOpType(null);
+
         if (success) {
           setInstallStep(5);
           setInstallProgress(100);
-          showToast('🏆 Claude Code 全自动配置成功！已可开箱即用。');
-          checkEnv();
+          if (currentOp === 'uninstall') {
+            showToast('✅ 环境清理完成。');
+          } else {
+            showToast('🏆 Claude Code 全自动配置成功！已可开箱即用。');
+          }
+          checkEnv(true);
+        } else if (currentOp === 'uninstall') {
+          showToast('❌ 卸载失败，请前往「日志与故障排查」查看详情。');
         } else {
-          showToast('❌ 安装失败，请前往「日志与排障」页面查看详情。');
+          showToast('❌ 安装失败，请前往「日志与故障排查」页面查看详情。');
         }
       });
+      if (cancelled) {
+        finishedUn();
+        return;
+      }
+      unlisteners.push(finishedUn);
     };
 
     setupListeners();
 
     return () => {
-      if (unlistenLog) unlistenLog();
-      if (unlistenProgress) unlistenProgress();
-      if (unlistenStatus) unlistenStatus();
-      if (unlistenFinished) unlistenFinished();
+      cancelled = true;
+      unlisteners.forEach((fn) => {
+        try {
+          fn();
+        } catch (_) {
+          /* ignore */
+        }
+      });
     };
   }, []);
 
   const handleInstall = async (configOverride = null) => {
     if (isInstalling) return;
+    opTypeRef.current = 'install';
+    setOpType('install');
     setIsInstalling(true);
     setLogsList([]);
     setInstallProgress(0);
@@ -231,6 +287,8 @@ export default function App() {
     } catch (e) {
       showToast(`启动安装失败: ${e}`);
       setIsInstalling(false);
+      opTypeRef.current = null;
+      setOpType(null);
     }
   };
 
@@ -247,6 +305,8 @@ export default function App() {
 
   const handleStartUninstall = async (uninstallNode, uninstallClaude) => {
     if (isInstalling) return;
+    opTypeRef.current = 'uninstall';
+    setOpType('uninstall');
     setIsInstalling(true);
     setLogsList([]);
     setInstallProgress(10);
@@ -261,6 +321,8 @@ export default function App() {
     } catch (e) {
       showToast(`启动卸载失败: ${e}`);
       setIsInstalling(false);
+      opTypeRef.current = null;
+      setOpType(null);
     }
   };
 
@@ -270,8 +332,6 @@ export default function App() {
     { id: 'install_config', label: '安装配置', desc: '安装 Claude Code', icon: Settings },
     { id: 'api', label: '模型与API配置', desc: '配置模型与 API 服务', icon: Cpu },
     { id: 'terminal', label: '终端与工具配置', desc: '配置终端与开发工具', icon: Terminal },
-    { id: 'shortcuts', label: '快捷命令配置', desc: '自定义快捷命令与别名', icon: Command },
-    { id: 'templates', label: '项目模板', desc: '选择或创建项目模板', icon: LayoutTemplate },
     { id: 'backup', label: '备份与恢复', desc: '备份和恢复配置', icon: Archive },
     { id: 'advanced', label: '高级设置', desc: '更多个性化设置', icon: Sliders },
     { id: 'logs', label: '日志与故障排查', desc: '查看日志与解决问题', icon: FileWarning },
@@ -280,7 +340,7 @@ export default function App() {
 
   return (
     <div className="w-screen h-screen bg-[#FFFBF9] font-sans text-[#4A3A31] selection:bg-orange-200 overflow-hidden flex flex-col">
-      
+
       {/* 消息提示 */}
       {toastMsg && (
         <div className="fixed top-8 left-1/2 z-50 bg-[#F37042] text-white px-6 py-3 rounded-2xl shadow-xl font-bold text-sm flex items-center gap-2 animate-toast-in">
@@ -290,12 +350,12 @@ export default function App() {
 
       {/* 主应用容器 — 撑满整个窗口 */}
       <div className="flex-1 bg-[#FFFBF9] overflow-hidden flex flex-col">
-        
+
         {/* 顶部栏组件 */}
         <Header checkEnv={checkEnv} isCheckingEnv={isCheckingEnv} />
 
         <div className="flex flex-1 overflow-hidden relative">
-          
+
           {/* 左侧边栏组件 */}
           <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs} />
 
@@ -309,16 +369,16 @@ export default function App() {
                   {/* 首页自适应响应式网格区 */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
                     <EnvOverview envData={envData} checkEnv={checkEnv} isCheckingEnv={isCheckingEnv} />
-                    <QuickInstall 
-                      installPath={installPath} 
+                    <QuickInstall
+                      installPath={installPath}
                       setInstallPath={setInstallPath}
-                      cbEnv={cbEnv} 
+                      cbEnv={cbEnv}
                       setCbEnv={setCbEnv}
-                      cbPath={cbPath} 
+                      cbPath={cbPath}
                       setCbPath={setCbPath}
-                      cbAlias={cbAlias} 
+                      cbAlias={cbAlias}
                       setCbAlias={setCbAlias}
-                      cbShortcut={cbShortcut} 
+                      cbShortcut={cbShortcut}
                       setCbShortcut={setCbShortcut}
                       handleInstall={handleInstall}
                       isInstalling={isInstalling}
@@ -326,15 +386,15 @@ export default function App() {
                     <UtilityTools triggerTool={triggerTool} />
                   </div>
 
-                  {/* 首页底部双列网格 */}
-                  <div className="flex flex-col lg:flex-row gap-5 pb-4">
-                    <InstallProgress 
-                      installStep={installStep} 
-                      installProgress={installProgress} 
-                      installStatus={installStatus} 
-                      isInstalling={isInstalling} 
+                  {/* 首页底部安装进度 */}
+                  <div className="flex flex-col gap-5 pb-4">
+                    <InstallProgress
+                      installStep={installStep}
+                      installProgress={installProgress}
+                      installStatus={installStatus}
+                      isInstalling={isInstalling}
+                      opType={opType}
                     />
-                    <LatestNews />
                   </div>
                 </>
               )}
@@ -346,16 +406,16 @@ export default function App() {
 
               {/* 安装配置详细页 */}
               {activeTab === 'install_config' && (
-                <InstallConfigTab 
-                  installPath={installPath} 
+                <InstallConfigTab
+                  installPath={installPath}
                   setInstallPath={setInstallPath}
-                  cbEnv={cbEnv} 
+                  cbEnv={cbEnv}
                   setCbEnv={setCbEnv}
-                  cbPath={cbPath} 
+                  cbPath={cbPath}
                   setCbPath={setCbPath}
-                  cbAlias={cbAlias} 
+                  cbAlias={cbAlias}
                   setCbAlias={setCbAlias}
-                  cbShortcut={cbShortcut} 
+                  cbShortcut={cbShortcut}
                   setCbShortcut={setCbShortcut}
                   handleInstall={handleInstall}
                   isInstalling={isInstalling}
@@ -365,9 +425,9 @@ export default function App() {
 
               {/* API 与模型配置页 */}
               {activeTab === 'api' && (
-                <ApiConfigTab 
-                  configData={configData} 
-                  saveConfig={saveConfig} 
+                <ApiConfigTab
+                  configData={configData}
+                  saveConfig={saveConfig}
                   handleInstall={handleInstall}
                   isInstalling={isInstalling}
                   setActiveTab={setActiveTab}
@@ -377,16 +437,6 @@ export default function App() {
               {/* 终端与网络代理配置页 */}
               {activeTab === 'terminal' && (
                 <TerminalConfigTab configData={configData} saveConfig={saveConfig} />
-              )}
-
-              {/* 快捷别名配置页 */}
-              {activeTab === 'shortcuts' && (
-                <ShortcutsTab triggerTool={triggerTool} />
-              )}
-
-              {/* 项目模板市场页 */}
-              {activeTab === 'templates' && (
-                <TemplatesTab showToast={showToast} />
               )}
 
               {/* 备份与重置页 */}

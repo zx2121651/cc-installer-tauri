@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Save, ShieldAlert, Key, Globe, Layers, AlertCircle, RefreshCw } from 'lucide-react';
+import { Cpu, Save, Key, Globe, Layers, AlertCircle, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 export default function ApiConfigTab({ configData, saveConfig, handleInstall, isInstalling, setActiveTab }) {
@@ -14,6 +14,7 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
   const [localUrl, setLocalUrl] = useState('http://localhost:11434');
   const [detectedModels, setDetectedModels] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
+  const [hasScannedLocal, setHasScannedLocal] = useState(false);
 
   // 1. Data Presets matched exactly with app.rs (Egui version) + LM Studio official first-class support
   const apiProfiles = [
@@ -30,7 +31,7 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
     { name: 'llama.cpp 本地推理', url: 'http://localhost:8080', hint: 'llamacpp', defaultModelIdx: 28 },
     { name: 'Ollama 本地推理', url: 'http://localhost:11434', hint: 'ollama', defaultModelIdx: 29 },
     { name: 'LM Studio 本地推理', url: 'http://localhost:1234', hint: 'lmstudio', defaultModelIdx: 30 },
-    { name: '自定义中转 API', url: '', hint: 'any', defaultModelIdx: 33 }
+    { name: '自定义中转 API', url: '', hint: 'any', defaultModelIdx: 32 }
   ];
 
   const modelPresets = [
@@ -111,22 +112,35 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
     const activeIdx = profileIdx !== -1 ? profileIdx : apiProfiles.length - 1; // Default to Custom API
     setSelectedProfileIdx(activeIdx);
 
-    // Try to match the selected model preset index
+    // Recompute filtered presets AFTER resolving profile index (avoid stale outer filteredPresets)
+    const activeProfile = apiProfiles[activeIdx];
+    const activeHint = activeProfile.hint;
+    const activeIsLocal =
+      activeHint === 'ccswitch' ||
+      activeHint === 'llamacpp' ||
+      activeHint === 'ollama' ||
+      activeHint === 'lmstudio' ||
+      activeHint === 'any';
+    const activeFiltered = modelPresets.filter(m =>
+      m.hint === activeHint ||
+      m.hint === 'any' ||
+      (m.hint === 'local' && activeIsLocal)
+    );
+
+    // Try to match the selected model preset index within the profile-aware list
     const presetIdx = modelPresets.findIndex(p => p.id !== '' && p.id === configData.model);
     if (presetIdx !== -1) {
       const matchedModel = modelPresets[presetIdx];
-      const modelInFilteredIdx = filteredPresets.findIndex(f => f.name === matchedModel.name);
-      if (modelInFilteredIdx !== -1) {
-        setSelectedPresetIdx(modelInFilteredIdx);
-      } else {
-        setSelectedPresetIdx(0);
-      }
+      const modelInFilteredIdx = activeFiltered.findIndex(f => f.name === matchedModel.name);
+      setSelectedPresetIdx(modelInFilteredIdx !== -1 ? modelInFilteredIdx : 0);
       setCustomModelInput('');
-    } else if (configData.model === '') {
-      setSelectedPresetIdx(0); // Follow default
+    } else if (configData.model === '' || configData.model == null) {
+      // Prefer official default (empty model id) when present — e.g. Anthropic 官方默认
+      const emptyDefaultIdx = activeFiltered.findIndex(f => f.id === '');
+      setSelectedPresetIdx(emptyDefaultIdx !== -1 ? emptyDefaultIdx : 0);
       setCustomModelInput('');
     } else {
-      const customIdx = filteredPresets.findIndex(f => f.id === '__CUSTOM__');
+      const customIdx = activeFiltered.findIndex(f => f.id === '__CUSTOM__');
       setSelectedPresetIdx(customIdx !== -1 ? customIdx : 0);
       setCustomModelInput(configData.model || '');
     }
@@ -136,19 +150,30 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
   const handleProfileChange = (idx) => {
     setSelectedProfileIdx(idx);
     const profile = apiProfiles[idx];
-    if (profile.url !== '') {
+
+    // Anthropic official: always restore official default URL
+    if (profile.hint === 'anthropic') {
+      setBaseUrl('https://api.anthropic.com');
+    } else if (profile.url !== '') {
       setBaseUrl(profile.url);
     }
-    
+    // Custom (empty url): keep current baseUrl so users can edit freely
+
     // Auto-update to profile's default model preset
-    const defaultModelPreset = modelPresets[profile.defaultModelIdx];
+    const safeIdx = Math.min(
+      Math.max(0, profile.defaultModelIdx ?? 0),
+      modelPresets.length - 1
+    );
+    const defaultModelPreset = modelPresets[safeIdx];
     const newIsLocalProvider = profile.hint === 'ccswitch' || profile.hint === 'llamacpp' || profile.hint === 'ollama' || profile.hint === 'lmstudio' || profile.hint === 'any';
-    const newFiltered = modelPresets.filter(m => 
-      m.hint === profile.hint || 
-      m.hint === 'any' || 
+    const newFiltered = modelPresets.filter(m =>
+      m.hint === profile.hint ||
+      m.hint === 'any' ||
       (m.hint === 'local' && newIsLocalProvider)
     );
-    const matchedIdx = newFiltered.findIndex(f => f.name === defaultModelPreset.name);
+    const matchedIdx = defaultModelPreset
+      ? newFiltered.findIndex(f => f.name === defaultModelPreset.name)
+      : -1;
     setSelectedPresetIdx(matchedIdx !== -1 ? matchedIdx : 0);
     setCustomModelInput('');
 
@@ -165,6 +190,7 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
   const handlePresetModelChange = (idx) => {
     const selectedPreset = filteredPresets[idx];
     setSelectedPresetIdx(idx);
+    if (!selectedPreset) return;
 
     if (selectedPreset.id === '__LOCAL__') {
       if (selectedPreset.hint === 'ollama') {
@@ -179,15 +205,29 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
     }
   };
 
+  const isPlaceholderModelEntry = (m) => {
+    const s = String(m || '');
+    return (
+      !s ||
+      s.includes('当前运行模型') ||
+      s.includes('未检测到本地模型') ||
+      s.includes('无本地模型')
+    );
+  };
+
   const handleScanLocal = async () => {
     setIsScanning(true);
     try {
       const res = await invoke('scan_local_models', { localServiceUrl: localUrl });
-      setDetectedModels(res || []);
+      const list = Array.isArray(res) ? res : [];
+      // Placeholder-only results (e.g. "当前运行模型") count as empty for empty-state UI
+      const realModels = list.filter(m => !isPlaceholderModelEntry(m));
+      setDetectedModels(realModels);
     } catch (err) {
       console.error(err);
-      alert('扫描失败，请确保本地 Ollama / LM Studio 等服务已经启动，并且端口正确！');
+      setDetectedModels([]);
     } finally {
+      setHasScannedLocal(true);
       setIsScanning(false);
     }
   };
@@ -206,15 +246,24 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
     
     setCustomModelInput(parsedModel);
     setBaseUrl(localUrl);
-    
-    if (!apiKey || apiKey === '') {
-      setApiKey('local-no-key-needed');
-    }
+    // Local engines typically do not need an API key — leave empty rather than writing a fake secret
   };
 
-  const handleSave = () => {
+  const resolveFinalConfig = () => {
     const selectedPreset = filteredPresets[selectedPresetIdx];
-    let finalModel = selectedPreset.id;
+    // Guard undefined preset (empty filtered list / out-of-range index)
+    if (!selectedPreset) {
+      return {
+        ...configData,
+        base_url: baseUrl,
+        api_key: apiKey,
+        // Anthropic official default prefers empty model string
+        model: currentProvider === 'anthropic' ? '' : (configData.model || '')
+      };
+    }
+
+    // Prefer official default empty string when anthropic default (id: '') is selected
+    let finalModel = selectedPreset.id ?? '';
     let finalBaseUrl = baseUrl;
 
     if (selectedPreset.id === '__LOCAL__') {
@@ -224,35 +273,22 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
       finalModel = customModelInput;
     }
 
-    const updated = {
+    return {
       ...configData,
       base_url: finalBaseUrl,
       api_key: apiKey,
       model: finalModel
     };
-    saveConfig(updated);
+  };
+
+  const handleSave = () => {
+    saveConfig(resolveFinalConfig());
   };
 
   // Triggers atomic save + auto switch tab to home to run the pipeline
   const handleAutoInstallClick = async () => {
-    const selectedPreset = filteredPresets[selectedPresetIdx];
-    let finalModel = selectedPreset.id;
-    let finalBaseUrl = baseUrl;
+    const updated = resolveFinalConfig();
 
-    if (selectedPreset.id === '__LOCAL__') {
-      finalModel = customModelInput || 'local-model';
-      finalBaseUrl = localUrl;
-    } else if (selectedPreset.id === '__CUSTOM__') {
-      finalModel = customModelInput;
-    }
-
-    const updated = {
-      ...configData,
-      base_url: finalBaseUrl,
-      api_key: apiKey,
-      model: finalModel
-    };
-    
     try {
       await saveConfig(updated);
     } catch (e) {
@@ -262,7 +298,7 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
     if (handleInstall) {
       handleInstall(updated);
     }
-    
+
     if (setActiveTab) {
       setActiveTab('home');
     }
@@ -274,6 +310,25 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
 
   // Determine if protocol mismatch alert should be shown (Ollama/llama.cpp direct connect warning)
   const isDirectLocalConnection = baseUrl.includes('11434') || baseUrl.includes('8080') || baseUrl.includes('1234');
+
+  // Provider-aware API key label / placeholder
+  const isOptionalKeyProvider =
+    currentProvider === 'ccswitch' ||
+    currentProvider === 'llamacpp' ||
+    currentProvider === 'ollama' ||
+    currentProvider === 'lmstudio';
+  const apiKeyLabel =
+    currentProvider === 'anthropic'
+      ? 'Anthropic API Key (鉴权密钥)'
+      : isOptionalKeyProvider
+        ? 'API Key (可选，本地通常不需要)'
+        : 'API Key (鉴权密钥)';
+  const apiKeyPlaceholder =
+    currentProvider === 'anthropic'
+      ? '在此粘贴 sk-ant-api03-...'
+      : isOptionalKeyProvider
+        ? '可选 — 本地服务通常无需填写'
+        : '在此粘贴 API Key...';
 
   return (
     <div className="flex-1 flex flex-col gap-5 overflow-hidden">
@@ -327,17 +382,17 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
               </span>
             </div>
 
-            {/* API Key Input */}
+            {/* API Key Input — provider-aware label */}
             <div>
               <label className="block text-[11px] font-black text-[#4A3A31] mb-1.5 flex items-center gap-1">
-                <Key className="w-3.5 h-3.5 text-[#F37042]" /> Anthropic API Key (鉴权密钥)
+                <Key className="w-3.5 h-3.5 text-[#F37042]" /> {apiKeyLabel}
               </label>
-              <input 
-                type="password" 
-                value={apiKey} 
+              <input
+                type="password"
+                value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
                 className="w-full bg-[#FFFBF9] border border-[#FDECE2] px-3.5 py-2.5 rounded-xl text-xs font-mono text-[#6D5A4E] focus:outline-none focus:border-orange-300"
-                placeholder="在此粘贴 sk-ant-api03-..."
+                placeholder={apiKeyPlaceholder}
               />
               <span className="text-[9px] text-[#9A877B] mt-1 block">
                 密钥将仅安全地保存在本地用户目录的 `.claude/settings.json` 中，绝不上报。
@@ -426,20 +481,32 @@ export default function ApiConfigTab({ configData, saveConfig, handleInstall, is
                   <div>
                     <label className="block text-[9px] font-black text-[#9A877B] mb-1">选择已识别的模型</label>
                     <div className="relative">
-                      <select 
+                      <select
                         onChange={e => handleSelectLocalModel(e.target.value)}
                         className="w-full bg-white border border-[#FEEFE6] px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-[#4A3A31] appearance-none focus:outline-none focus:border-orange-200"
                       >
                         {detectedModels.length === 0 ? (
-                          <option>无本地模型 (请先扫描)</option>
+                          <option value="">
+                            {hasScannedLocal
+                              ? '未检测到可用本地模型'
+                              : '无本地模型 (请先扫描)'}
+                          </option>
                         ) : (
-                          detectedModels.map((m, i) => (
-                            <option key={i} value={m}>{m}</option>
-                          ))
+                          <>
+                            <option value="">请选择模型...</option>
+                            {detectedModels.map((m, i) => (
+                              <option key={i} value={m}>{m}</option>
+                            ))}
+                          </>
                         )}
                       </select>
                       <div className="absolute right-2 top-2.5 w-3 h-3 text-[#9A877B] pointer-events-none flex items-center justify-center font-mono text-[8px]">▼</div>
                     </div>
+                    {hasScannedLocal && detectedModels.length === 0 && (
+                      <p className="text-[9px] text-orange-600 mt-1.5 leading-relaxed">
+                        未发现真实可用模型（占位项如「当前运行模型」已忽略）。请确认 Ollama / LM Studio / llama.cpp 已启动并加载模型后重新扫描。
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

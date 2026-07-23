@@ -84,6 +84,8 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
 
         let adapter = get_platform_adapter();
         let mut final_node_dir = String::new();
+        let mut warnings: Vec<String> = vec![];
+        let mut hard_ok = true;
 
         // ── Check if Node.js (>= 18) & npm are installed ──
         let has_node = adapter.is_node_version_valid() && adapter.detect_npm().is_some();
@@ -107,6 +109,7 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
                     let _ = app.emit("install-progress", 30);
                 }
                 Err(e) => {
+                    hard_ok = false;
                     let _ = app.emit("install-status", format!("❌ 安装 Node.js 失败: {}", e));
                     let _ = app.emit("install-progress", 100);
                     let _ = app.emit("install-finished", false);
@@ -117,6 +120,7 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
             // Hot-reload PATH variable for the current process
             #[cfg(target_os = "windows")]
             {
+                utils::refresh_process_path();
                 if let Ok(current_path) = std::env::var("PATH") {
                     let mut extra_paths = vec![final_node_dir.clone()];
                     if let Ok(appdata) = std::env::var("APPDATA") {
@@ -137,30 +141,39 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
             // Sleep briefly to let environment settle
             thread::sleep(std::time::Duration::from_secs(3));
         }
-        
+
         let _ = app.emit("install-status", "步骤 1/5: 正在进行网络代理及镜像源加速配置...");
         let _ = app.emit("install-progress", 45);
-        let _ = adapter.set_npm_registry("https://registry.npmmirror.com");
-        
+        if let Err(e) = adapter.set_npm_registry("https://registry.npmmirror.com") {
+            let msg = format!("npm 镜像源配置失败: {}", e);
+            warnings.push(msg.clone());
+            let _ = app.emit("install-status", format!("⚠️ {}", msg));
+        }
+
         let _ = app.emit("install-status", "正在修复 PowerShell 执行策略...");
-        let _ = adapter.fix_execution_policy();
-        
-        let _ = app.emit("install-status", "步骤 2/5: 正在下载 Claude CLI 安装包...");
+        if let Err(e) = adapter.fix_execution_policy() {
+            let msg = format!("PowerShell 执行策略修复失败: {}", e);
+            warnings.push(msg.clone());
+            let _ = app.emit("install-status", format!("⚠️ {}", msg));
+        }
+
+        let _ = app.emit("install-status", "步骤 2/5: 准备 npm 全局安装 Claude Code...");
         let _ = app.emit("install-progress", 55);
-        
+
         let _ = app.emit("install-status", "步骤 3/5: 正在全局安装 Claude CLI 并配置依赖...");
         let _ = app.emit("install-progress", 70);
-        
+
         if let Err(e) = adapter.install_claude_code(&path, log_tx.clone(), cancel_flag.clone()) {
+            hard_ok = false;
             let _ = app.emit("install-status", format!("安装失败: {}", e));
             let _ = app.emit("install-progress", 100);
             let _ = app.emit("install-finished", false);
             return;
         }
-        
-        let _ = app.emit("install-status", "步骤 4/5: 正在进行高级环境配置及别名注入...");
+
+        let _ = app.emit("install-status", "步骤 4/5: 正在进行高级环境配置...");
         let _ = app.emit("install-progress", 90);
-        
+
         if config.auto_config_env {
             let _ = app.emit("install-status", "正在写入 Claude Code 加速中转配置...");
             let mut target_base_url = config.custom_api_url.trim().to_string();
@@ -181,32 +194,13 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
 
                 if needs_cc_switch {
                     let has_cc = utils::is_ccswitch_installed_anywhere();
-                    let mut install_success = has_cc;
 
-                    if !has_cc {
-                        let _ = app.emit("install-status", "⚠️ 检测到配置了本地模型或第三方代理，正在自动部署 CC-Switch 协议转换网关...");
-                        let version = utils::fetch_latest_ccswitch_version("").unwrap_or_else(|_| "1.0.6".to_string());
-                        let temp_dir = std::env::temp_dir();
-                        let msi_path = temp_dir.join("CC-Switch-Installer.msi");
-
-                        let _ = app.emit("install-status", format!("⏳ 正在下载 CC-Switch v{} 中转网关...", version));
-                        let (p_tx, _p_rx) = channel::<f32>();
-                        if utils::download_ccswitch(&version, "", &msi_path, p_tx, cancel_flag.clone(), Some(log_tx.clone())).is_ok() {
-                            let _ = app.emit("install-status", "🔧 正在静默安装 CC-Switch...");
-                            if utils::run_ccswitch_msi(&msi_path).is_ok() {
-                                install_success = true;
-                                let _ = app.emit("install-status", "✅ CC-Switch 中转网关安装成功！");
-                            }
-                            let _ = std::fs::remove_file(msi_path);
-                        }
-                    }
-
-                    if install_success {
+                    if has_cc {
                         sync_cc = true;
                         cc_backend_url = target_base_url.clone();
                         target_base_url = format!("http://localhost:{}", utils::get_ccswitch_proxy_port());
 
-                        // Launch CC-Switch in backend
+                        // Launch CC-Switch in backend if already installed
                         if let Some(exe_path) = utils::find_ccswitch_path() {
                             let mut cmd = std::process::Command::new(exe_path);
                             #[cfg(target_os = "windows")]
@@ -216,111 +210,169 @@ fn start_installation(app: tauri::AppHandle, config: InstallConfig) {
                             }
                             let _ = cmd.spawn();
                         }
+                    } else {
+                        // Do not auto-download third-party software; keep original URL
+                        let msg = "未检测到 CC-Switch。第三方/本地 API 可能需要协议转换网关，请手动安装 CC-Switch 后重试（已写入原始 API 地址，未启用协议转换）".to_string();
+                        warnings.push(msg.clone());
+                        let _ = app.emit("install-status", format!("⚠️ {}", msg));
+                        let _ = log_tx.send(format!("⚠️ {}\n", msg));
                     }
                 }
             }
 
-            let _ = adapter.configure_claude_settings(
+            if let Err(e) = adapter.configure_claude_settings(
                 &config.custom_api_url,
                 &config.api_key,
                 &target_base_url,
-            );
+            ) {
+                let msg = format!("Claude 环境配置写入失败: {}", e);
+                warnings.push(msg.clone());
+                let _ = app.emit("install-status", format!("⚠️ {}", msg));
+            }
 
             #[cfg(target_os = "windows")]
             {
                 if sync_cc {
                     let _ = app.emit("install-status", "正在向本地网关注入模型绑定配置...");
-                    let _ = utils::sync_to_ccswitch(&cc_backend_url, &config.api_key, "");
+                    if let Err(e) = utils::sync_to_ccswitch(&cc_backend_url, &config.api_key, "") {
+                        let msg = format!("CC-Switch 模型绑定同步失败: {}", e);
+                        warnings.push(msg.clone());
+                        let _ = app.emit("install-status", format!("⚠️ {}", msg));
+                    }
                 }
             }
         }
-        
+
         if config.add_to_path {
             let _ = app.emit("install-status", "正在将 Claude Code 添加到用户 PATH 环境变量...");
             if !path.is_empty() && path != "C:\\Program Files\\Claude Code" {
-                let _ = adapter.add_to_path(&path);
+                if let Err(e) = adapter.add_to_path(&path) {
+                    let msg = format!("添加 PATH 失败: {}", e);
+                    warnings.push(msg.clone());
+                    let _ = app.emit("install-status", format!("⚠️ {}", msg));
+                }
             } else {
                 #[cfg(target_os = "windows")]
                 {
                     if let Ok(appdata) = std::env::var("APPDATA") {
                         let npm_path = std::path::Path::new(&appdata).join("npm");
-                        let _ = adapter.add_to_path(&npm_path.to_string_lossy());
+                        if let Err(e) = adapter.add_to_path(&npm_path.to_string_lossy()) {
+                            let msg = format!("添加 PATH 失败: {}", e);
+                            warnings.push(msg.clone());
+                            let _ = app.emit("install-status", format!("⚠️ {}", msg));
+                        }
+                    } else {
+                        let msg = "无法获取 APPDATA，跳过 PATH 添加".to_string();
+                        warnings.push(msg.clone());
+                        let _ = app.emit("install-status", format!("⚠️ {}", msg));
                     }
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
                     if let Ok(home) = std::env::var("HOME") {
                         let npm_path = std::path::Path::new(&home).join(".local").join("share").join("nodejs").join("bin");
-                        let _ = adapter.add_to_path(&npm_path.to_string_lossy());
+                        if let Err(e) = adapter.add_to_path(&npm_path.to_string_lossy()) {
+                            let msg = format!("添加 PATH 失败: {}", e);
+                            warnings.push(msg.clone());
+                            let _ = app.emit("install-status", format!("⚠️ {}", msg));
+                        }
+                    } else {
+                        let msg = "无法获取 HOME，跳过 PATH 添加".to_string();
+                        warnings.push(msg.clone());
+                        let _ = app.emit("install-status", format!("⚠️ {}", msg));
                     }
                 }
             }
         }
-        
+
         if config.create_desktop_shortcut {
             let _ = app.emit("install-status", "正在创建桌面快捷方式...");
-            let _ = adapter.create_desktop_shortcut();
+            if let Err(e) = adapter.create_desktop_shortcut() {
+                let msg = format!("创建桌面快捷方式失败: {}", e);
+                warnings.push(msg.clone());
+                let _ = app.emit("install-status", format!("⚠️ {}", msg));
+            }
         }
-        
-        let _ = app.emit("install-status", "步骤 5/5: Claude Code 一键安装配置已成功完成！");
+
+        if !warnings.is_empty() {
+            let _ = app.emit(
+                "install-status",
+                format!(
+                    "步骤 5/5: Claude Code 安装部分成功完成（{} 项警告）",
+                    warnings.len()
+                ),
+            );
+        } else {
+            let _ = app.emit("install-status", "步骤 5/5: Claude Code 一键安装配置已成功完成！");
+        }
         let _ = app.emit("install-progress", 100);
-        let _ = app.emit("install-finished", true);
+        // Claude install itself succeeded if we reached here; soft warnings do not hard-fail.
+        let _ = app.emit("install-finished", hard_ok);
     });
 }
 
 #[tauri::command]
 fn run_utility_tool(tool_id: &str) -> Result<String, String> {
-    match tool_id {
-        "open_claude" => {
-            Command::new("cmd")
-                .args(&["/c", "start", "powershell", "-NoExit", "claude"])
-                .spawn()
-                .map_err(|e| e.to_string())?;
-            Ok("成功打开 Claude Code".to_string())
-        }
-        "edit_config" => {
-            if let Ok(path) = utils::get_claude_settings_path() {
-                let file_path = path.join("settings.json");
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = tool_id;
+        return Err("当前实用工具仅支持 Windows".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        match tool_id {
+            "open_claude" => {
                 Command::new("cmd")
-                    .args(&["/c", "start", "notepad.exe", &file_path.to_string_lossy()])
+                    .args(&["/c", "start", "powershell", "-NoExit", "claude"])
                     .spawn()
                     .map_err(|e| e.to_string())?;
-                Ok("已启动记事本".to_string())
-            } else {
-                Err("无法找到配置文件路径".to_string())
+                Ok("成功打开 Claude Code".to_string())
             }
-        }
-        "env_vars" => {
-            Command::new("cmd")
-                .args(&["/c", "rundll32.exe", "sysdm.cpl,EditEnvironmentVariables"])
-                .spawn()
-                .map_err(|e| e.to_string())?;
-            Ok("已打开环境变量管理".to_string())
-        }
-        "clean_cache" => {
-            let output = Command::new("cmd")
-                .args(&["/c", "npm", "cache", "clean", "--force"])
-                .output()
-                .map_err(|e| e.to_string())?;
-            if output.status.success() {
-                Ok("成功清理缓存".to_string())
-            } else {
-                Err("清理缓存失败".to_string())
+            "edit_config" => {
+                if let Ok(path) = utils::get_claude_settings_path() {
+                    let file_path = path.join("settings.json");
+                    Command::new("cmd")
+                        .args(&["/c", "start", "notepad.exe", &file_path.to_string_lossy()])
+                        .spawn()
+                        .map_err(|e| e.to_string())?;
+                    Ok("已启动记事本".to_string())
+                } else {
+                    Err("无法找到配置文件路径".to_string())
+                }
             }
+            "env_vars" => {
+                Command::new("cmd")
+                    .args(&["/c", "rundll32.exe", "sysdm.cpl,EditEnvironmentVariables"])
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+                Ok("已打开环境变量管理".to_string())
+            }
+            "clean_cache" => {
+                let output = Command::new("cmd")
+                    .args(&["/c", "npm", "cache", "clean", "--force"])
+                    .output()
+                    .map_err(|e| e.to_string())?;
+                if output.status.success() {
+                    Ok("成功清理缓存".to_string())
+                } else {
+                    Err("清理缓存失败".to_string())
+                }
+            }
+            "fix_env" => {
+                Command::new("cmd")
+                    .args(&["/c", "npm", "cache", "clean", "--force"])
+                    .output()
+                    .map_err(|e| e.to_string())?;
+                Ok("系统环境修复已执行".to_string())
+            }
+            "uninstall" => {
+                let (log_tx, _log_rx) = channel();
+                utils::uninstall_claude_code(log_tx).map_err(|e| e.to_string())?;
+                Ok("Claude Code 卸载完成".to_string())
+            }
+            _ => Err("未知工具".to_string()),
         }
-        "fix_env" => {
-            Command::new("cmd")
-                .args(&["/c", "npm", "cache", "clean", "--force"])
-                .output()
-                .map_err(|e| e.to_string())?;
-            Ok("系统环境修复已执行".to_string())
-        }
-        "uninstall" => {
-            let (log_tx, _log_rx) = channel();
-            utils::uninstall_claude_code(log_tx).map_err(|e| e.to_string())?;
-            Ok("Claude Code 卸载完成".to_string())
-        }
-        _ => Err("未知工具".to_string()),
     }
 }
 
@@ -346,7 +398,7 @@ fn get_claude_config() -> ClaudeConfig {
     ClaudeConfig {
         base_url: utils::get_current_base_url().unwrap_or_else(|| "https://api.anthropic.com".to_string()),
         api_key: utils::get_current_api_key().unwrap_or_default(),
-        model: utils::get_current_model().unwrap_or_else(|| "claude-sonnet-5".to_string()),
+        model: utils::get_current_model().unwrap_or_else(|| "".to_string()),
         always_thinking: utils::get_current_always_thinking(),
         max_thinking_tokens: utils::get_current_max_thinking_tokens(),
         disable_auto_compact: utils::get_current_disable_auto_compact(),
@@ -371,15 +423,18 @@ fn save_claude_config(config: ClaudeConfig) -> Result<(), String> {
     let is_local_engine = target_base_url.contains(":11434") || target_base_url.contains(":8080") || target_base_url.contains(":1234");
 
     if !is_anthropic && !is_ccswitch && !is_local_engine {
-        let user_profile = std::env::var("USERPROFILE")
-            .unwrap_or_else(|_| r"C:\Users\Administrator".to_string());
-        let db_path = std::path::PathBuf::from(&user_profile)
-            .join(".cc-switch")
-            .join("cc-switch.db");
-        if db_path.exists() {
-            sync_cc = true;
-            cc_backend_url = target_base_url.clone();
-            target_base_url = format!("http://localhost:{}", utils::get_ccswitch_proxy_port());
+        // Soft-skip CC-Switch rewrite when USERPROFILE is missing/empty (no Administrator fallback)
+        if let Ok(user_profile) = std::env::var("USERPROFILE") {
+            if !user_profile.is_empty() {
+                let db_path = std::path::PathBuf::from(&user_profile)
+                    .join(".cc-switch")
+                    .join("cc-switch.db");
+                if db_path.exists() {
+                    sync_cc = true;
+                    cc_backend_url = target_base_url.clone();
+                    target_base_url = format!("http://localhost:{}", utils::get_ccswitch_proxy_port());
+                }
+            }
         }
     }
 
@@ -512,30 +567,45 @@ fn start_uninstallation(app: tauri::AppHandle, uninstall_node: bool, uninstall_c
         });
 
         let adapter = get_platform_adapter();
-        
+        let mut success = true;
+        let mut had_work = false;
+
         if uninstall_claude {
+            had_work = true;
             let _ = app.emit("install-status", "正在卸载 Claude CLI 全局包...");
             let _ = app.emit("install-progress", 40);
             if let Err(e) = adapter.uninstall_claude_code(log_tx.clone()) {
+                success = false;
                 let _ = app.emit("install-status", format!("Claude CLI 卸载失败: {}", e));
+                let _ = log_tx.send(format!("❌ Claude CLI 卸载失败: {}\n", e));
             } else {
                 let _ = log_tx.send("✅ Claude CLI 全局包卸载完成。\n".to_string());
             }
         }
-        
+
         if uninstall_node {
+            had_work = true;
             let _ = app.emit("install-status", "正在静默卸载 Node.js 运行时...");
             let _ = app.emit("install-progress", 70);
             if let Err(e) = adapter.uninstall_node(log_tx.clone()) {
+                success = false;
                 let _ = app.emit("install-status", format!("Node.js 卸载失败: {}", e));
+                let _ = log_tx.send(format!("❌ Node.js 卸载失败: {}\n", e));
             } else {
                 let _ = log_tx.send("✅ Node.js 卸载逻辑处理完成。\n".to_string());
             }
         }
-        
-        let _ = app.emit("install-status", "环境卸载清理任务已全部成功完成！");
+
+        if !had_work {
+            success = false;
+            let _ = app.emit("install-status", "未选择任何卸载目标");
+        } else if success {
+            let _ = app.emit("install-status", "环境卸载清理任务已全部成功完成！");
+        } else {
+            let _ = app.emit("install-status", "环境卸载完成，但部分步骤失败，请查看日志");
+        }
         let _ = app.emit("install-progress", 100);
-        let _ = app.emit("install-finished", true);
+        let _ = app.emit("install-finished", success);
     });
 }
 

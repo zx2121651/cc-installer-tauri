@@ -150,21 +150,6 @@ pub fn detect_powershell() -> Option<String> {
     })
 }
 
-/// Detect if @anthropic-ai/claude-code CLI is globally installed
-pub fn is_claude_code_installed() -> bool {
-    let output = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/c", "claude -v"]);
-        #[cfg(target_os = "windows")]
-        c.creation_flags(CREATE_NO_WINDOW);
-        c.output().ok()
-    } else {
-        Command::new("claude").arg("-v").output().ok()
-    };
-
-    output.map(|out| out.status.success()).unwrap_or(false)
-}
-
 /// Helper to search for CC-Switch.exe across C, D and other active local drives
 pub fn find_ccswitch_path() -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
@@ -808,71 +793,6 @@ foreach ($scope in @('User', 'Machine')) {{
     let _ = log_sender.send("__NODE_DONE__\n".to_string());
 }
 
-/// Update NPM to latest version globally (sends log, ends with __NPM_DONE__)
-
-pub fn update_npm(log_sender: std::sync::mpsc::Sender<String>) {
-    let _ = log_sender.send("正在执行 npm install -g npm@latest ...\n".to_string());
-
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/c", "npm install -g npm@latest"]);
-        #[cfg(target_os = "windows")]
-        c.creation_flags(CREATE_NO_WINDOW);
-        c
-    } else {
-        let mut c = Command::new("npm");
-        c.args(["install", "-g", "npm@latest"]);
-        c
-    };
-
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    if let Ok(mut child) = cmd.spawn() {
-        if let Some(stdout) = child.stdout.take() {
-            let log = log_sender.clone();
-            std::thread::spawn(move || {
-                let mut reader = io::BufReader::new(stdout);
-                let mut buf = [0u8; 256];
-                while let Ok(n) = reader.read(&mut buf) {
-                    if n == 0 {
-                        break;
-                    }
-                    let _ = log.send(String::from_utf8_lossy(&buf[..n]).to_string());
-                }
-            });
-        }
-        match child.wait() {
-            Ok(s) if s.success() => {
-                let _ = log_sender.send("✅ NPM 已成功更新到最新版！\n".to_string());
-            }
-            _ => {
-                let _ = log_sender.send(
-                    "❌ NPM 更新失败，请检查网络连接或手动运行 npm install -g npm@latest\n"
-                        .to_string(),
-                );
-            }
-        }
-    } else {
-        let _ = log_sender.send("❌ 无法启动 npm 进程，请确认 Node.js 已正确安装。\n".to_string());
-    }
-    let _ = log_sender.send("__NPM_DONE__".to_string());
-}
-
-/// Test connection latency to a URL in milliseconds
-pub fn test_url_latency(url: &str) -> Option<u128> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(3))
-        .build()
-        .ok()?;
-
-    let start = std::time::Instant::now();
-    let resp = client.get(url).send().ok()?;
-    if resp.status().is_success() || resp.status().is_redirection() {
-        Some(start.elapsed().as_millis())
-    } else {
-        None
-    }
-}
-
 /// Switch npm registry to any custom registry URL
 pub fn set_npm_registry(registry: &str) -> Result<String, String> {
     let status = if cfg!(target_os = "windows") {
@@ -892,28 +812,6 @@ pub fn set_npm_registry(registry: &str) -> Result<String, String> {
         Ok(registry.to_string())
     } else {
         Err("npm config 命令执行返回值非零".to_string())
-    }
-}
-
-/// Get current npm registry
-pub fn get_npm_registry() -> Result<String, String> {
-    let output = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/c", "npm config get registry"]);
-        #[cfg(target_os = "windows")]
-        c.creation_flags(CREATE_NO_WINDOW);
-        c.output()
-    } else {
-        Command::new("npm")
-            .args(["config", "get", "registry"])
-            .output()
-    }
-    .map_err(|e| format!("执行 npm 命令失败: {}", e))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Err("获取 npm 注册源失败".to_string())
     }
 }
 
@@ -959,101 +857,6 @@ pub fn get_powershell_execution_policy() -> String {
         }
     }
     "Unknown".to_string()
-}
-
-/// Install Claude Code globally
-pub fn install_claude_code(
-    log_sender: std::sync::mpsc::Sender<String>,
-    cancel_flag: Arc<AtomicBool>,
-) -> Result<(), String> {
-    // Fix PowerShell execution policy FIRST to avoid "running scripts is disabled" error
-    #[cfg(target_os = "windows")]
-    {
-        let _ = log_sender.send("🔧 正在检查 PowerShell 执行策略...\n".to_string());
-        if fix_powershell_execution_policy() {
-            let _ = log_sender.send(
-                "✅ PowerShell 执行策略已设置为 RemoteSigned（允许运行 npm 全局脚本）\n"
-                    .to_string(),
-            );
-        } else {
-            let _ = log_sender.send("⚠️ 无法修改执行策略，若之后出现 'cannot be loaded' 错误，请手动以管理员身份运行：\n   Set-ExecutionPolicy RemoteSigned -Scope CurrentUser\n".to_string());
-        }
-    }
-
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/c", "npm install -g @anthropic-ai/claude-code"]);
-        #[cfg(target_os = "windows")]
-        c.creation_flags(CREATE_NO_WINDOW);
-        c
-    } else {
-        let mut c = Command::new("npm");
-        c.args(["install", "-g", "@anthropic-ai/claude-code"]);
-        c
-    };
-
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("启动 npm 安装进程失败: {}", e))?;
-
-    let stdout = child.stdout.take().ok_or("无法获取进程 stdout 句柄")?;
-    let stderr = child.stderr.take().ok_or("无法获取进程 stderr 句柄")?;
-
-    let log_sender_out = log_sender.clone();
-    let log_sender_err = log_sender;
-
-    // Read stdout
-    let out_thread = std::thread::spawn(move || {
-        let mut reader = io::BufReader::new(stdout);
-        let mut buffer = [0; 512];
-        while let Ok(n) = reader.read(&mut buffer) {
-            if n == 0 {
-                break;
-            }
-            let text = String::from_utf8_lossy(&buffer[..n]).to_string();
-            let _ = log_sender_out.send(text);
-        }
-    });
-
-    // Read stderr
-    let err_thread = std::thread::spawn(move || {
-        let mut reader = io::BufReader::new(stderr);
-        let mut buffer = [0; 512];
-        while let Ok(n) = reader.read(&mut buffer) {
-            if n == 0 {
-                break;
-            }
-            let text = String::from_utf8_lossy(&buffer[..n]).to_string();
-            let _ = log_sender_err.send(text);
-        }
-    });
-
-    // Wait loop with cancel check
-    loop {
-        if cancel_flag.load(Ordering::Relaxed) {
-            let _ = child.kill();
-            return Err("安装已被用户取消。".to_string());
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let _ = out_thread.join();
-                let _ = err_thread.join();
-                if status.success() {
-                    return Ok(());
-                } else {
-                    return Err(format!("安装失败，错误代码: {:?}", status.code()));
-                }
-            }
-            Ok(None) => {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-            Err(e) => {
-                return Err(format!("等待安装进程结束时出错: {}", e));
-            }
-        }
-    }
 }
 
 /// Install Claude Code globally with custom prefix
@@ -1224,53 +1027,6 @@ pub fn create_desktop_shortcut() -> bool {
     }
 }
 
-/// Detect installed Claude Code version (returns None if not installed)
-pub fn detect_claude_version() -> Option<String> {
-    let output = if cfg!(target_os = "windows") {
-        let mut c = Command::new("cmd");
-        c.args(["/c", "claude --version"]);
-        #[cfg(target_os = "windows")]
-        c.creation_flags(CREATE_NO_WINDOW);
-        c.output().ok()
-    } else {
-        Command::new("claude").arg("--version").output().ok()
-    };
-
-    output
-        .and_then(|out| {
-            let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if raw.is_empty() {
-                // Some versions print to stderr
-                None
-            } else {
-                Some(raw)
-            }
-        })
-        .or_else(|| {
-            // Try npm ls to check if the package is globally installed
-            let output = if cfg!(target_os = "windows") {
-                let mut c = Command::new("cmd");
-                c.args(["/c", "npm ls -g @anthropic-ai/claude-code --depth=0"]);
-                #[cfg(target_os = "windows")]
-                c.creation_flags(CREATE_NO_WINDOW);
-                c.output().ok()
-            } else {
-                Command::new("npm")
-                    .args(["ls", "-g", "@anthropic-ai/claude-code", "--depth=0"])
-                    .output()
-                    .ok()
-            };
-            output.and_then(|out| {
-                let text = String::from_utf8_lossy(&out.stdout).to_string();
-                // Look for "@anthropic-ai/claude-code@x.x.x" in output
-                text.lines()
-                    .find(|l| l.contains("@anthropic-ai/claude-code"))
-                    .and_then(|l| l.split('@').last())
-                    .map(|v| v.trim().to_string())
-            })
-        })
-}
-
 /// Uninstall Claude Code globally via npm
 pub fn uninstall_claude_code(log_sender: std::sync::mpsc::Sender<String>) -> Result<(), String> {
     let mut cmd = if cfg!(target_os = "windows") {
@@ -1349,222 +1105,6 @@ pub fn uninstall_claude_code(log_sender: std::sync::mpsc::Sender<String>) -> Res
     }
 }
 
-/// Get latest release version of cc-switch from Github
-pub fn fetch_latest_ccswitch_version(github_mirror: &str) -> Result<String, String> {
-    // If mirror is set, try fetching through mirror or fall back to direct api if mirror fails
-    let url = if github_mirror.is_empty() {
-        "https://api.github.com/repos/farion1231/cc-switch/releases/latest".to_string()
-    } else {
-        // Many Github mirrors do not proxy api.github.com directly, so we try querying a fallback or using a stable direct query.
-        // Usually api.github.com is accessible, but if it is blocked, we can parse the latest release version using fallback logic or default to a safe known version.
-        "https://api.github.com/repos/farion1231/cc-switch/releases/latest".to_string()
-    };
-
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("cc-installer-agent")
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
-
-    let resp = client
-        .get(&url)
-        .send()
-        .map_err(|e| format!("请求 GitHub API 失败: {}", e))?;
-
-    if resp.status().is_success() {
-        let json: serde_json::Value = resp
-            .json()
-            .map_err(|e| format!("解析 JSON 响应失败: {}", e))?;
-
-        let tag_name = json["tag_name"]
-            .as_str()
-            .ok_or("JSON 响应中未找到 tag_name")?;
-
-        // Remove 'v' prefix if present
-        let version = if let Some(stripped) = tag_name.strip_prefix('v') {
-            stripped
-        } else {
-            &tag_name
-        };
-        Ok(version.to_string())
-    } else {
-        Err(format!("GitHub API 返回了错误状态码: {}", resp.status()))
-    }
-}
-
-/// Download cc-switch installer with progress updates and automatic mirror fallback
-pub fn download_ccswitch(
-    version: &str,
-    preferred_mirror: &str,
-    dest_path: &Path,
-    progress_sender: std::sync::mpsc::Sender<f32>,
-    cancel_flag: Arc<AtomicBool>,
-    log_sender: Option<std::sync::mpsc::Sender<String>>,
-) -> Result<(), String> {
-    let raw_path = format!(
-        "https://github.com/farion1231/cc-switch/releases/download/v{}/CC-Switch-v{}-Windows.msi",
-        version, version
-    );
-
-    // Build the list of mirrors to try: preferred first, then fallbacks, then direct
-    let mut mirrors: Vec<&str> = Vec::new();
-    if !preferred_mirror.is_empty() {
-        mirrors.push(preferred_mirror);
-    }
-    // Fallback mirrors (excluding the already-added preferred one)
-    let fallbacks: &[&str] = &[
-        "https://ghfast.top/",
-        "https://github.moeyy.xyz/",
-        "https://521github.com/",
-        "https://gh-proxy.com/",
-        "", // direct GitHub as last resort
-    ];
-    for &fb in fallbacks {
-        if fb != preferred_mirror {
-            mirrors.push(fb);
-        }
-    }
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
-
-    let mut last_err = String::new();
-
-    for mirror in &mirrors {
-        if cancel_flag.load(Ordering::Relaxed) {
-            return Err("下载已被用户取消。".to_string());
-        }
-
-        let url = if mirror.is_empty() {
-            raw_path.clone()
-        } else {
-            format!("{}{}", mirror, raw_path)
-        };
-
-        let mirror_name = if mirror.is_empty() {
-            "GitHub 官方直连"
-        } else {
-            mirror
-        };
-        if let Some(ref tx) = log_sender {
-            let _ = tx.send(format!("⏳ 正在尝试镜像: {} ...\n", mirror_name));
-        }
-
-        let response = client.get(&url).send();
-        match response {
-            Err(e) => {
-                last_err = format!("镜像 {} 连接失败: {}", mirror_name, e);
-                if let Some(ref tx) = log_sender {
-                    let _ = tx.send(format!("❌ {} — 切换下一个镜像\n", last_err));
-                }
-                continue;
-            }
-            Ok(resp) if !resp.status().is_success() => {
-                last_err = format!("镜像 {} 返回错误状态码 {}", mirror_name, resp.status());
-                if let Some(ref tx) = log_sender {
-                    let _ = tx.send(format!("❌ {} — 切换下一个镜像\n", last_err));
-                }
-                continue;
-            }
-            Ok(mut response) => {
-                if let Some(ref tx) = log_sender {
-                    let _ = tx.send(format!("✅ 镜像可用，开始下载...\n"));
-                }
-
-                let total_size = response
-                    .headers()
-                    .get(reqwest::header::CONTENT_LENGTH)
-                    .and_then(|ct_len| ct_len.to_str().ok())
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .unwrap_or(0);
-
-                let mut file =
-                    File::create(dest_path).map_err(|e| format!("无法创建本地目标文件: {}", e))?;
-
-                let mut buffer = vec![0; 8192];
-                let mut downloaded: u64 = 0;
-
-                loop {
-                    if cancel_flag.load(Ordering::Relaxed) {
-                        drop(file);
-                        let _ = fs::remove_file(dest_path);
-                        return Err("下载已被用户取消。".to_string());
-                    }
-
-                    let n = response
-                        .read(&mut buffer)
-                        .map_err(|e| format!("读取网络数据流失败: {}", e))?;
-
-                    if n == 0 {
-                        break;
-                    }
-
-                    file.write_all(&buffer[..n])
-                        .map_err(|e| format!("写入本地磁盘失败: {}", e))?;
-
-                    downloaded += n as u64;
-                    if total_size > 0 {
-                        let _ = progress_sender.send(downloaded as f32 / total_size as f32);
-                    }
-                }
-
-                // Sanity Check: Verify if the file is a valid MSI
-                drop(file); // Close file handle first so we can read it
-
-                let mut checker = File::open(dest_path).map_err(|e| format!("校验时无法打开文件: {}", e))?;
-                let mut header = [0u8; 4];
-                let _ = checker.read_exact(&mut header);
-                let file_len = checker.metadata().map(|m| m.len()).unwrap_or(0);
-
-                // OLE Compound Document magic header (MSI files) is: D0 CF 11 E0
-                let is_valid_msi = header == [0xD0, 0xCF, 0x11, 0xE0] && file_len > 1_000_000;
-
-                if !is_valid_msi {
-                    let _ = fs::remove_file(dest_path);
-                    last_err = format!("镜像 {} 下载的文件并非有效的 MSI 文件包 (大小: {} 字节)", mirror_name, file_len);
-                    if let Some(ref tx) = log_sender {
-                        let _ = tx.send(format!("❌ {} — 切换下一个镜像\n", last_err));
-                    }
-                    continue;
-                }
-
-                return Ok(());
-            }
-        }
-    }
-
-    Err(format!("所有镜像均无法访问，最后错误: {}", last_err))
-}
-
-/// Run the downloaded MSI file to install CC-Switch
-pub fn run_ccswitch_msi(msi_path: &Path) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        let msi_path_str = msi_path.to_string_lossy().to_string();
-        let status = Command::new("msiexec")
-            .args(&["/i", &msi_path_str, "/passive", "/norestart"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status()
-            .map_err(|e| format!("运行 msiexec 进程失败: {}", e))?;
-
-        if status.success() || status.code() == Some(0) || status.code() == Some(3010) {
-            Ok(())
-        } else {
-            Err(format!("msiexec 返回错误代码: {:?}", status.code()))
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = msi_path;
-        Ok(())
-    }
-}
-
 /// Download Node.js MSI from a fast domestic mirror with progress reporting
 pub fn download_nodejs(
     dest_path: &Path,
@@ -1618,6 +1158,14 @@ pub fn download_nodejs(
             .map_err(|e| format!("写入本地磁盘失败: {}", e))?;
 
         downloaded += n as u64;
+        if total_size > 0 {
+            let _ = progress_sender.send(downloaded as f32 / total_size as f32);
+        }
+    }
+
+    // Ensure UI reaches 100% when content-length was known
+    if total_size > 0 {
+        let _ = progress_sender.send(1.0);
     }
 
     // Sanity Check: Verify if the file is a valid MSI
@@ -1640,6 +1188,12 @@ pub fn download_nodejs(
 }
 
 /// Install Node.js from the downloaded MSI silently/passively.
+///
+/// `custom_dir`: preferred install directory. When `None`, msiexec uses the MSI
+/// default (`C:\Program Files\nodejs`). When `Some`, INSTALLDIR is only passed
+/// if the path has no spaces (Rust's `Command` quotes property=value args with
+/// spaces and msiexec returns error 1639). Paths with spaces are intentionally
+/// ignored — INSTALLDIR with spaces is unsupported via this API.
 pub fn run_nodejs_installer(msi_path: &Path, custom_dir: Option<&str>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -1647,10 +1201,17 @@ pub fn run_nodejs_installer(msi_path: &Path, custom_dir: Option<&str>) -> Result
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
         let mut args = vec!["/i".to_string(), msi_path.to_string_lossy().to_string()];
-        // NOTE: Do NOT pass INSTALLDIR here. Rust's Command API will wrap
-        // paths with spaces in outer double-quotes which msiexec does not
-        // accept for property=value arguments, causing error 1639.
-        // Node.js MSI installs to C:\Program Files\nodejs by default.
+
+        // Only pass INSTALLDIR when safe (no spaces). Paths with spaces break
+        // msiexec property syntax when quoted by Command (error 1639).
+        if let Some(dir) = custom_dir {
+            let dir = dir.trim();
+            if !dir.is_empty() && !dir.contains(' ') && !dir.contains('"') {
+                args.push(format!("INSTALLDIR={}", dir));
+            }
+            // else: INSTALLDIR unsupported for paths with spaces — use MSI default
+        }
+
         args.push("/passive".to_string());
         args.push("/norestart".to_string());
 
@@ -2392,199 +1953,6 @@ pub fn sync_to_ccswitch(base_url: &str, api_key: &str, model_name: &str) -> Resu
     Ok(())
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct UpdateInfo {
-    pub version: String,
-    pub download_url: String,
-    pub changelog: String,
-}
-
-/// Helper function to parse semantic version parts (major, minor, patch)
-fn parse_version(v: &str) -> (u32, u32, u32) {
-    let cleaned = v.trim().trim_start_matches('v');
-    let parts: Vec<u32> = cleaned
-        .split('.')
-        .filter_map(|s| s.parse::<u32>().ok())
-        .collect();
-    (
-        parts.get(0).copied().unwrap_or(0),
-        parts.get(1).copied().unwrap_or(0),
-        parts.get(2).copied().unwrap_or(0),
-    )
-}
-
-/// Compare semantic version numbers. Returns true if remote is newer than current.
-pub fn is_newer_version(remote: &str, current: &str) -> bool {
-    parse_version(remote) > parse_version(current)
-}
-
-/// Fetch version information from Gitee/GitHub mirror raw URL
-pub fn check_for_update(url: &str) -> Result<Option<UpdateInfo>, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
-
-    let response = client
-        .get(url)
-        .send()
-        .map_err(|e| format!("无法连接更新服务器: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("更新服务器返回错误状态码: {}", response.status()));
-    }
-
-    let text = response
-        .text()
-        .map_err(|e| format!("读取更新信息失败: {}", e))?;
-
-    // Strip UTF-8 BOM if present
-    let cleaned = text.trim_start_matches('\u{FEFF}');
-
-    let info: UpdateInfo =
-        serde_json::from_str(cleaned).map_err(|e| format!("解析版本 JSON 失败: {}", e))?;
-
-    let current = env!("CARGO_PKG_VERSION");
-    if is_newer_version(&info.version, current) {
-        Ok(Some(info))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Downloads the new binary to a temp directory, and writes a self-replace batch script to execute it.
-pub fn apply_update(
-    download_url: &str,
-    progress_sender: std::sync::mpsc::Sender<f32>,
-    cancel_flag: Arc<AtomicBool>,
-) -> Result<(), String> {
-    let temp_dir = std::env::temp_dir();
-    let new_exe_path = temp_dir.join("cc-installer-update.exe");
-
-    // 1. Download the new binary
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
-
-    let mut response = client
-        .get(download_url)
-        .send()
-        .map_err(|e| format!("连接下载地址失败: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("下载服务器返回错误状态码: {}", response.status()));
-    }
-
-    let total_size = response
-        .headers()
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|ct_len| ct_len.to_str().ok())
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
-
-    let mut file =
-        File::create(&new_exe_path).map_err(|e| format!("无法创建本地临时文件: {}", e))?;
-
-    let mut buffer = vec![0; 8192];
-    let mut downloaded: u64 = 0;
-
-    loop {
-        if cancel_flag.load(Ordering::Relaxed) {
-            drop(file);
-            let _ = fs::remove_file(&new_exe_path);
-            return Err("下载已被用户取消。".to_string());
-        }
-
-        let n = response
-            .read(&mut buffer)
-            .map_err(|e| format!("读取网络数据流失败: {}", e))?;
-
-        if n == 0 {
-            break;
-        }
-
-        file.write_all(&buffer[..n])
-            .map_err(|e| format!("写入本地磁盘失败: {}", e))?;
-
-        downloaded += n as u64;
-        if total_size > 0 {
-            let _ = progress_sender.send(downloaded as f32 / total_size as f32);
-        }
-    }
-
-    drop(file);
-
-    // 2. Perform self-replacement and restart using batch script
-    #[cfg(target_os = "windows")]
-    {
-        let current_exe =
-            std::env::current_exe().map_err(|e| format!("获取当前可执行文件路径失败: {}", e))?;
-
-        let bat_content = format!(
-            r#"@echo off
-timeout /t 1 /nobreak >nul
-move /y "{tmp}" "{cur}"
-start "" "{cur}"
-del "%~f0""#,
-            tmp = new_exe_path.to_string_lossy(),
-            cur = current_exe.to_string_lossy(),
-        );
-
-        let bat_path = temp_dir.join("cc-installer-self-update.bat");
-        fs::write(&bat_path, bat_content).map_err(|e| format!("写入自我更新批处理失败: {}", e))?;
-
-        // Launch the batch script silently in background
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        Command::new("cmd")
-            .args(["/c", &bat_path.to_string_lossy()])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| format!("启动自我更新程序失败: {}", e))?;
-
-        // Exit this process immediately
-        std::process::exit(0);
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(())
-    }
-}
-
-/// Open folder dialog using PowerShell FolderBrowserDialog on Windows
-pub fn select_folder() -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        let script = r#"
-        Add-Type -AssemblyName System.Windows.Forms
-        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dialog.Description = '请选择 Claude Code 安装路径'
-        $dialog.ShowNewFolderButton = $true
-        if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-            Write-Output $dialog.SelectedPath
-        }
-        "#;
-        let mut c = Command::new("powershell");
-        c.args(["-NoProfile", "-Command", script]);
-        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        let output = c.output().ok()?;
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(path);
-            }
-        }
-        None
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        None
-    }
-}
-
 /// Dynamically query Windows Registry for the latest User and Machine PATH variables,
 /// and refresh the current process's PATH environment variable.
 pub fn refresh_process_path() {
@@ -2606,15 +1974,3 @@ pub fn refresh_process_path() {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_update() {
-        let url =
-            "https://gitee.com/zxcv2121651/cc-installer-releases/raw/master/installer_version.json";
-        match super::check_for_update(url) {
-            Ok(info) => println!("Success: {:?}", info),
-            Err(e) => println!("Failed: {}", e),
-        }
-    }
-}
